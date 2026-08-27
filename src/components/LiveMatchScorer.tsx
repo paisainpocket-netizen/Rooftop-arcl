@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import {
   Match,
   BallOutcome,
@@ -797,28 +797,15 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
           currentBowlerId: battingSquad[0]?.id || 'b1',
         };
       } else if (currentInningsNum === 2 && (isAllOut || isOversFinished)) {
-        // bowlingTeam here is the team that batted in innings 1. If they
-        // lead after innings 2, their captain gets the follow-on choice —
-        // bat again normally, or make the trailing team follow on.
-        const lead = inn1Runs - newTotalRuns;
-        if (lead > 0) {
-          cricketAudio.speak(`2nd Innings closed. ${bowlingTeam.name} leads by ${lead} runs and can enforce the follow-on.`);
-          updatedMatch = {
-            ...updatedMatch,
-            status: 'innings_break',
-            awaitingFollowOnDecision: true,
-          };
-        } else {
-          cricketAudio.speak(`2nd Innings closed. 3rd Innings begins.`);
-          updatedMatch = {
-            ...updatedMatch,
-            currentInningsNumber: 3,
-            followOnDecision: 'bat_again',
-            currentStrikerId: bowlingSquad[0]?.id || 'p1',
-            currentNonStrikerId: bowlingSquad[1]?.id || 'p2',
-            currentBowlerId: battingSquad[0]?.id || 'b1',
-          };
-        }
+        // Simple rule: after both teams have batted once, always ask the
+        // bowling captain "bat again or bowl (send them in again)?" before
+        // starting the 3rd innings — no lead/margin condition needed.
+        cricketAudio.speak(`2nd Innings closed. ${bowlingTeam.name}'s captain to decide: bat or bowl?`);
+        updatedMatch = {
+          ...updatedMatch,
+          status: 'innings_break',
+          awaitingFollowOnDecision: true,
+        };
       } else if (currentInningsNum === 3 && (isAllOut || isOversFinished)) {
         const isFollowOn = match.followOnDecision === 'enforce_follow_on';
         // The innings-3 team's combined total vs. the other team's total so far.
@@ -965,8 +952,16 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   };
 
   // Undo Last Ball
+  // Guard against rapid/repeated taps: without this, spamming the Undo
+  // button fires this handler multiple times using the same stale
+  // `currentInnings` snapshot (before the previous undo has re-rendered),
+  // which corrupts ball/over counts. The ref-based lock forces each undo
+  // to fully complete and re-render before the next one is processed.
+  const isUndoingRef = useRef(false);
   const handleUndoLastBall = () => {
+    if (isUndoingRef.current) return;
     if (currentInnings.balls.length === 0) return;
+    isUndoingRef.current = true;
     cricketAudio.playClick('Last ball undone');
 
     const lastBall = currentInnings.balls[currentInnings.balls.length - 1];
@@ -1030,6 +1025,20 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       };
     }
 
+    // Revert Extras (wides/no-balls/byes/leg-byes) — this was previously
+    // missing entirely, which is why the Extras total never changed on Undo.
+    const updatedExtras = { ...currentInnings.extras };
+    if (lastBall.extraType === 'wide') {
+      updatedExtras.wides = Math.max(0, (updatedExtras.wides || 0) - lastBall.extraRuns);
+    } else if (lastBall.extraType === 'noBall') {
+      updatedExtras.noBalls = Math.max(0, (updatedExtras.noBalls || 0) - lastBall.extraRuns);
+    } else if (lastBall.extraType === 'bye') {
+      updatedExtras.byes = Math.max(0, (updatedExtras.byes || 0) - lastBall.extraRuns);
+    } else if (lastBall.extraType === 'legBye') {
+      updatedExtras.legByes = Math.max(0, (updatedExtras.legByes || 0) - lastBall.extraRuns);
+    }
+    updatedExtras.total = Math.max(0, (updatedExtras.total || 0) - lastBall.extraRuns);
+
     const updatedInnings: Innings = {
       ...currentInnings,
       totalRuns: newTotalRuns,
@@ -1039,6 +1048,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       balls: newBalls,
       battingStats: updatedBattingStats,
       bowlingStats: updatedBowlingStats,
+      extras: updatedExtras,
       fallOfWickets: currentInnings.fallOfWickets.filter((f) => f.over !== lastBall.displayOver),
     };
 
@@ -1056,6 +1066,13 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       innings4: currentInningsNum === 4 ? updatedInnings : match.innings4,
       updatedAt: Date.now(),
     });
+
+    // Release the lock only after this tick so React has queued the
+    // re-render with the fresh (post-undo) state before another tap
+    // is allowed through.
+    setTimeout(() => {
+      isUndoingRef.current = false;
+    }, 400);
   };
 
   // Swap Strike manually
@@ -1084,25 +1101,14 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
           updatedAt: Date.now(),
         });
       } else if (currentInningsNum === 2) {
-        const lead = inn1Runs - currentInnings.totalRuns;
-        if (lead > 0) {
-          onUpdateMatch({
-            ...match,
-            status: 'innings_break',
-            awaitingFollowOnDecision: true,
-            updatedAt: Date.now(),
-          });
-        } else {
-          onUpdateMatch({
-            ...match,
-            currentInningsNumber: 3,
-            followOnDecision: 'bat_again',
-            currentStrikerId: bowlingSquad[0]?.id || 'p1',
-            currentNonStrikerId: bowlingSquad[1]?.id || 'p2',
-            currentBowlerId: battingSquad[0]?.id || 'b1',
-            updatedAt: Date.now(),
-          });
-        }
+        // Simple rule: always ask bat-or-bowl before the 3rd innings,
+        // regardless of who's ahead.
+        onUpdateMatch({
+          ...match,
+          status: 'innings_break',
+          awaitingFollowOnDecision: true,
+          updatedAt: Date.now(),
+        });
       } else if (currentInningsNum === 3) {
         const isFollowOn = match.followOnDecision === 'enforce_follow_on';
         const leaderTotal = (isFollowOn ? inn2Runs : inn1Runs) + currentInnings.totalRuns;
@@ -1887,7 +1893,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
                 <button
                   onClick={handleUndoLastBall}
-                  disabled={currentInnings.balls.length === 0}
+                  disabled={currentInnings.balls.length === 0 || isUndoingRef.current}
                   className="h-12 sm:h-13 rounded-2xl bg-gradient-to-b from-orange-500/80 to-amber-600/80 text-white font-bold text-xs flex items-center justify-center shadow active:scale-90 transition cursor-pointer disabled:opacity-30"
                 >
                   <span>Undo</span>
@@ -2539,11 +2545,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
           >
             <div className="border-b border-slate-800 pb-3">
               <h3 className="font-black text-base text-amber-400 flex items-center gap-2">
-                <Trophy className="w-5 h-5" /> Follow-On Decision
+                <Trophy className="w-5 h-5" /> Bat or Bowl?
               </h3>
               <p className="text-[11px] text-slate-400 mt-1">
-                {bowlingTeam.name} leads by {Math.max(0, inn1Runs - inn2Runs)} runs after 2 innings. {bowlingTeam.name}'s
-                captain can bat again, or enforce the follow-on and send {battingTeam.name} back in to bat 3rd innings straightaway.
+                Both teams have batted once. {bowlingTeam.name}'s captain, what will you do for the 3rd innings —
+                bat again, or send {battingTeam.name} back in to bat?
               </p>
             </div>
 
@@ -2557,6 +2563,9 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                     awaitingFollowOnDecision: false,
                     followOnDecision: 'bat_again',
                     currentInningsNumber: 3,
+                    currentStrikerId: bowlingSquad[0]?.id || 'p1',
+                    currentNonStrikerId: bowlingSquad[1]?.id || 'p2',
+                    currentBowlerId: battingSquad[0]?.id || 'b1',
                     updatedAt: Date.now(),
                   });
                 }}
@@ -2566,19 +2575,22 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
               </button>
               <button
                 onClick={() => {
-                  cricketAudio.playClick(`${bowlingTeam.name} enforced the follow-on`);
+                  cricketAudio.playClick(`${bowlingTeam.name} sent the opposition in to bat`);
                   onUpdateMatch({
                     ...match,
                     status: 'live',
                     awaitingFollowOnDecision: false,
                     followOnDecision: 'enforce_follow_on',
                     currentInningsNumber: 3,
+                    currentStrikerId: battingSquad[0]?.id || 'p1',
+                    currentNonStrikerId: battingSquad[1]?.id || 'p2',
+                    currentBowlerId: bowlingSquad[0]?.id || 'b1',
                     updatedAt: Date.now(),
                   });
                 }}
                 className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-black text-sm cursor-pointer"
               >
-                🎯 Enforce Follow-On (make {battingTeam.name} bat again)
+                🎯 Bowl (make {battingTeam.name} bat again)
               </button>
             </div>
           </div>
