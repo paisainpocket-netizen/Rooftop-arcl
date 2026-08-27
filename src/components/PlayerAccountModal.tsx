@@ -255,25 +255,82 @@ export const PlayerAccountModal: React.FC<PlayerAccountModalProps> = ({
     setEditingJersey(false);
   };
 
+  // Resizes/compresses an uploaded image before it is stored, so avatars
+  // stay small (a few KB instead of several MB) in Firebase.
+  const compressImage = (file: File, maxDim = 200, quality = 0.75): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = reject;
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = reject;
+        img.onload = () => {
+          let { width, height } = img;
+          if (width > height) {
+            if (width > maxDim) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            }
+          } else {
+            if (height > maxDim) {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(reader.result as string);
+            return;
+          }
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && loggedInPlayer) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        const updated: Player = {
-          ...loggedInPlayer,
-          avatar: result,
-          isClaimed: true,
-        };
-        if (onUpdatePlayer) {
-          onUpdatePlayer(updated);
-        }
-        onLogin(updated);
-        cricketAudio.playClick('Profile photo updated');
-        setEditingPhoto(false);
-      };
-      reader.readAsDataURL(file);
+      compressImage(file, 200, 0.75)
+        .then((result) => {
+          const updated: Player = {
+            ...loggedInPlayer,
+            avatar: result,
+            isClaimed: true,
+          };
+          if (onUpdatePlayer) {
+            onUpdatePlayer(updated);
+          }
+          onLogin(updated);
+          cricketAudio.playClick('Profile photo updated');
+          setEditingPhoto(false);
+        })
+        .catch(() => {
+          // Fallback: if compression fails for any reason, still let the
+          // user set their photo using the original file.
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const result = reader.result as string;
+            const updated: Player = {
+              ...loggedInPlayer,
+              avatar: result,
+              isClaimed: true,
+            };
+            if (onUpdatePlayer) {
+              onUpdatePlayer(updated);
+            }
+            onLogin(updated);
+            cricketAudio.playClick('Profile photo updated');
+            setEditingPhoto(false);
+          };
+          reader.readAsDataURL(file);
+        });
     }
   };
 
