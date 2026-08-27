@@ -1,0 +1,6 @@
+{
+  "name": "Amritsar Rooftop Cricket League",
+  "description": "Professional rooftop and gully cricket live scorer, tournament manager, player stats, custom terrace rules, and ball-by-ball match manager.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

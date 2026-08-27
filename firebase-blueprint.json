@@ -1,0 +1,69 @@
+{
+  "entities": {
+    "matches": {
+      "title": "Matches",
+      "description": "Cricket matches with ball-by-ball events, innings, teams, and rooftop rules state",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Match unique ID" },
+        "name": { "type": "string", "description": "Match name or title" },
+        "status": { "type": "string", "enum": ["upcoming", "live", "innings_break", "completed", "abandoned"] },
+        "format": { "type": "string", "description": "Match format e.g. T10, T20, custom" },
+        "totalOvers": { "type": "number", "description": "Overs per innings" },
+        "teamA": { "type": "object", "description": "First team object" },
+        "teamB": { "type": "object", "description": "Second team object" },
+        "innings": { "type": "array", "description": "Innings records" },
+        "currentInningsIndex": { "type": "number", "description": "Active innings index" },
+        "tournamentId": { "type": "string", "description": "Associated tournament ID if any" },
+        "creatorId": { "type": "string", "description": "User ID who created the match" },
+        "creatorProfileId": { "type": "string", "description": "Player Profile ID of creator" },
+        "updatedAt": { "type": "string", "description": "ISO timestamp of last update" }
+      },
+      "required": ["id", "status", "teamA", "teamB"]
+    },
+    "teams": {
+      "title": "Teams",
+      "description": "Cricket teams and roster information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Team unique ID" },
+        "name": { "type": "string", "description": "Team name" },
+        "shortName": { "type": "string", "description": "Short code e.g. ARCL" },
+        "city": { "type": "string", "description": "City or neighborhood" },
+        "color": { "type": "string", "description": "Hex color code" },
+        "players": { "type": "array", "description": "Squad players list" },
+        "creatorId": { "type": "string", "description": "User ID who created the team" },
+        "creatorProfileId": { "type": "string", "description": "Player Profile ID of creator" }
+      },
+      "required": ["id", "name", "players"]
+    },
+    "players": {
+      "title": "Players",
+      "description": "Player profiles with career statistics and custom attributes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Player unique ID" },
+        "profileId": { "type": "string", "description": "e.g. ARCL-001" },
+        "name": { "type": "string", "description": "Player name" },
+        "role": { "type": "string", "description": "Player role" },
+        "stats": { "type": "object", "description": "Career statistics" },
+        "pin": { "type": "string", "description": "4-digit security PIN" },
+        "isClaimed": { "type": "boolean", "description": "Profile claimed state" }
+      },
+      "required": ["id", "profileId", "name"]
+    },
+    "tournaments": {
+      "title": "Tournaments",
+      "description": "Tournaments, leagues, standings and points tables",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Tournament unique ID" },
+        "name": { "type": "string", "description": "Tournament name" },
+        "status": { "type": "string", "enum": ["upcoming", "ongoing", "completed"] },
+        "teams": { "type": "array", "description": "Array of team IDs" },
+        "creatorId": { "type": "string", "description": "User ID who created the tournament" }
+      },
+      "required": ["id", "name", "status"]
+    }
+  }
+}

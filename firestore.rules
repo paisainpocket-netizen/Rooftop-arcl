@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Matches collection (live scores, ball-by-ball, stats)
+    match /matches/{matchId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+
+      // Ball-by-ball subcollection. IMPORTANT: Firestore security rules are
+      // NOT automatically inherited by subcollections — a rule on
+      // /matches/{matchId} does NOT cover /matches/{matchId}/balls/{ballId}
+      // on its own. Without this explicit block, every read/write to ball
+      // documents would be denied by default, which is exactly the kind of
+      // silent failure that looks like "scoring isn't syncing".
+      match /balls/{ballId} {
+        allow read: if true;
+        allow create, update, delete: if true;
+      }
+    }
+
+    // Teams collection
+    match /teams/{teamId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Players collection (career stats, roster, profiles)
+    match /players/{playerId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // Tournaments collection (standings, schedules)
+    match /tournaments/{tournamentId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // ---------------------------------------------------------------------
+    // NOTE on "scorers can write, fans can read-only":
+    // Firestore rules can only restrict writes based on `request.auth` (a
+    // signed-in Firebase Auth identity). This app currently does NOT sign
+    // users into Firebase Auth at all — login is a custom 4-digit PIN
+    // checked against the `players` collection in application code, which
+    // Firestore rules have no visibility into. That means `request.auth`
+    // is always null for every device, scorer or fan alike, so any rule
+    // written as `allow write: if request.auth != null` would lock EVERY
+    // device out, including legitimate scorers — not just fans.
+    //
+    // Enforcing this safely needs Firebase Authentication wired into the
+    // app first (e.g. anonymous sign-in on load, mapping a player's PIN
+    // login to a custom token/claim such as `isScorer: true`), so rules
+    // here can check something like:
+    //   allow write: if request.auth != null && request.auth.token.isScorer == true;
+    // That's a genuine feature addition on top of the current app, not a
+    // rules-only change — happy to build it as a follow-up if you want
+    // real write restriction rather than open (but fully synced) access.
+    // ---------------------------------------------------------------------
+  }
+}
