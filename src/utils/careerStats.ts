@@ -76,7 +76,13 @@ function addInningsToDelta(innings: Innings | undefined, playerId: string, delta
   if (!innings) return;
 
   const bat = innings.battingStats?.[playerId];
-  if (bat) {
+  // Only count this as an actual innings if the player faced at least one
+  // ball, or was genuinely dismissed (e.g. run out for 0 without facing a
+  // ball). Previously any battingStats record — including a 0-run/0-ball
+  // placeholder created for "Did Not Bat" scorecard display — was counted
+  // as a full innings, inflating the innings tally (e.g. 3 innings/match
+  // in Test matches instead of the correct max of 2).
+  if (bat && (bat.balls > 0 || bat.isOut)) {
     delta.innings += 1;
     delta.runs += bat.runs;
     delta.ballsFaced += bat.balls;
