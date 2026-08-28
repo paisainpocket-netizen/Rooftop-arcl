@@ -963,6 +963,10 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     if (currentInnings.balls.length === 0) return;
     isUndoingRef.current = true;
     cricketAudio.playClick('Last ball undone');
+    // If the over-completion "Change Bowler" popup was left open from the
+    // ball we're about to undo, close it too — otherwise it can still be
+    // forced afterward even though the over is no longer actually complete.
+    setIsBowlerModalOpen(false);
 
     const lastBall = currentInnings.balls[currentInnings.balls.length - 1];
     const newBalls = currentInnings.balls.slice(0, -1);
@@ -971,10 +975,15 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     const newTotalRuns = Math.max(0, currentInnings.totalRuns - totalRunsSub);
     const newTotalWickets = Math.max(0, currentInnings.totalWickets - (lastBall.isWicket ? 1 : 0));
 
-    let newOversCompleted = lastBall.overNumber;
-    let newBallsInCurrentOver = lastBall.isLegalDelivery
-      ? Math.max(0, lastBall.ballNumber - 1)
-      : lastBall.ballNumber;
+    // Recompute over/ball counts directly from the remaining ball-by-ball
+    // list (rather than trusting the popped ball's own stored ballNumber),
+    // so counting is self-correcting and can't drift out of sync when
+    // wides/no-balls are mixed with undo. Total legal deliveries bowled so
+    // far always determines "overs.balls" — this is the single source of
+    // truth on both record and undo.
+    const remainingLegalBalls = newBalls.filter((b) => b.isLegalDelivery).length;
+    let newOversCompleted = Math.floor(remainingLegalBalls / 6);
+    let newBallsInCurrentOver = remainingLegalBalls % 6;
 
     // Revert Batsman stats
     const updatedBattingStats = { ...currentInnings.battingStats };
@@ -1008,9 +1017,12 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       const newWickets = Math.max(0, bowlerData.wickets - (isBowlerW ? 1 : 0));
       const newDots = Math.max(0, bowlerData.dots - (lastBall.runsBat === 0 && lastBall.extraType === 'none' && !lastBall.isWicket ? 1 : 0));
 
-      const totalBowlerBalls = (bowlerData.overs * 6) + bowlerData.balls - (lastBall.isLegalDelivery ? 1 : 0);
-      const newBOvers = Math.max(0, Math.floor(totalBowlerBalls / 6));
-      const newBBalls = Math.max(0, totalBowlerBalls % 6);
+      // Same self-correcting approach for this bowler's own over/ball tally —
+      // recount their legal deliveries from the remaining balls list instead
+      // of subtracting 1 from a possibly-already-drifted running total.
+      const bowlerLegalBalls = newBalls.filter((b) => b.bowlerId === lastBall.bowlerId && b.isLegalDelivery).length;
+      const newBOvers = Math.floor(bowlerLegalBalls / 6);
+      const newBBalls = bowlerLegalBalls % 6;
       const bOversFloat = newBOvers + (newBBalls / 6);
       const newEcon = bOversFloat > 0 ? Number((newRuns / bOversFloat).toFixed(2)) : 0;
 
