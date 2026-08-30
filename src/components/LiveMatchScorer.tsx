@@ -605,10 +605,18 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     const bowlerOversFloat = newBowlerOvers + (newBowlerBallsRemainder / 6);
     const newBowlerEconomy = bowlerOversFloat > 0 ? Number((newBowlerRuns / bowlerOversFloat).toFixed(2)) : 0;
 
-    // Check maiden over if over just completed
+    // Check maiden over if over just completed. IMPORTANT: filter by the
+    // ACTUAL innings over number (currentInnings.oversCompleted, the same
+    // value used when this ball was recorded) — not by the bowler's own
+    // cumulative overs-bowled count. Those two only match if a bowler bowls
+    // every over back-to-back; the moment another bowler takes an over in
+    // between, `currentBowlerData.overs` drifts away from the real over
+    // number, so the old filter could pull in a completely different
+    // (sometimes even a different bowler's) over and declare a false maiden.
     let newMaidens = currentBowlerData.maidens;
     if (isLegalDelivery && newBowlerBallsRemainder === 0) {
-      const overBalls = currentInnings.balls.filter((b) => b.bowlerId === bowler.id && b.overNumber === currentBowlerData.overs);
+      const thisOverNumber = currentInnings.oversCompleted;
+      const overBalls = currentInnings.balls.filter((b) => b.bowlerId === bowler.id && b.overNumber === thisOverNumber);
       const overRuns = overBalls.reduce((acc, b) => acc + b.runsBat + ((b.extraType === 'wide' || b.extraType === 'noBall') ? b.extraRuns : 0), 0) + bowlerRunsAdded;
       if (overRuns === 0) {
         newMaidens += 1;
@@ -2285,50 +2293,83 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
             </span>
           </div>
 
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
             {currentInnings.balls.length === 0 ? (
               <p className="text-center text-slate-500 italic py-6">No deliveries bowled yet.</p>
             ) : (
-              [...currentInnings.balls].reverse().map((b) => (
-                <div
-                  key={b.id}
-                  onClick={() => setSelectedBallDetail(b)}
-                  className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
-                    b.isWicket
-                      ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
-                      : b.isSix
-                      ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
-                      : b.isFour
-                      ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
-                      : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
-                      {b.displayOver}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
-                        {b.isWicket && (
-                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
-                            Wicket
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
-                    </div>
-                  </div>
+              (() => {
+                // Group deliveries by over so each over shows a small summary
+                // header (runs/wickets that over) above its individual balls —
+                // easier to scan than one long flat list.
+                const overGroups = new Map<number, typeof currentInnings.balls>();
+                currentInnings.balls.forEach((b) => {
+                  const key = b.overNumber;
+                  if (!overGroups.has(key)) overGroups.set(key, []);
+                  overGroups.get(key)!.push(b);
+                });
+                const sortedOverNumbers = Array.from(overGroups.keys()).sort((a, b) => b - a);
 
-                  <div className="text-right">
-                    <span className={`text-base font-black font-mono ${
-                      b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
-                    }`}>
-                      {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.runsBat}
-                    </span>
-                  </div>
-                </div>
-              ))
+                return sortedOverNumbers.map((overNum) => {
+                  const ballsInOver = overGroups.get(overNum)!;
+                  const overRuns = ballsInOver.reduce((sum, b) => sum + b.runsBat + b.extraRuns, 0);
+                  const overWickets = ballsInOver.filter((b) => b.isWicket).length;
+                  const bowlerName = ballsInOver[0]?.bowlerName || '';
+
+                  return (
+                    <div key={overNum} className="space-y-1.5">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[11px] font-black text-cyan-400 uppercase tracking-wide">
+                          Over {overNum + 1} • {bowlerName}
+                        </span>
+                        <span className="text-[11px] font-mono font-black text-slate-300">
+                          {overRuns} run{overRuns === 1 ? '' : 's'}
+                          {overWickets > 0 ? ` • ${overWickets} wkt${overWickets === 1 ? '' : 's'}` : ''}
+                        </span>
+                      </div>
+                      {[...ballsInOver].reverse().map((b) => (
+                        <div
+                          key={b.id}
+                          onClick={() => setSelectedBallDetail(b)}
+                          className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
+                            b.isWicket
+                              ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
+                              : b.isSix
+                              ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
+                              : b.isFour
+                              ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
+                              : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
+                              {b.displayOver}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
+                                {b.isWicket && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
+                                    Wicket
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className={`text-base font-black font-mono ${
+                              b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
+                            }`}>
+                              {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.runsBat}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                });
+              })()
             )}
           </div>
         </div>
@@ -2723,6 +2764,85 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 ✕
               </button>
             </div>
+
+            {/* Over Summary — recap of the over that just finished, plus
+                both batsmen's current scores, the bowler's full figure, and
+                the match's running total — so the scorer/captain sees the
+                full picture before picking the next bowler. */}
+            {(() => {
+              const justFinishedOverNumber = currentInnings.oversCompleted - 1;
+              const thisOverBalls = currentInnings.balls.filter((b) => b.overNumber === justFinishedOverNumber);
+              if (thisOverBalls.length === 0) return null;
+              const overRuns = thisOverBalls.reduce((sum, b) => sum + b.runsBat + b.extraRuns, 0);
+              const overWickets = thisOverBalls.filter((b) => b.isWicket).length;
+              const overBowlerId = thisOverBalls[0]?.bowlerId || '';
+              const bowlerName = thisOverBalls[0]?.bowlerName || '';
+              const bowlerFig = currentInnings.bowlingStats[overBowlerId];
+              const strikerStat = currentInnings.battingStats[match.currentStrikerId];
+              const nonStrikerStat = currentInnings.battingStats[match.currentNonStrikerId];
+              return (
+                <div className="rounded-2xl border border-cyan-800/40 bg-cyan-950/20 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-cyan-300">
+                      Over {justFinishedOverNumber + 1} • {bowlerName}
+                    </span>
+                    <span className="text-xs font-mono font-black text-white">
+                      {overRuns} run{overRuns === 1 ? '' : 's'}{overWickets > 0 ? ` • ${overWickets} wkt${overWickets === 1 ? '' : 's'}` : ''}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {thisOverBalls.map((b) => (
+                      <span
+                        key={b.id}
+                        className={`w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-mono font-black ${
+                          b.isWicket
+                            ? 'bg-rose-600 text-white'
+                            : b.isSix
+                            ? 'bg-purple-600 text-white'
+                            : b.isFour
+                            ? 'bg-emerald-600 text-white'
+                            : b.extraType !== 'none'
+                            ? 'bg-amber-600 text-white'
+                            : 'bg-slate-800 text-slate-200'
+                        }`}
+                      >
+                        {b.isWicket
+                          ? 'W'
+                          : b.extraType === 'wide'
+                          ? `${b.extraRuns}wd`
+                          : b.extraType === 'noBall'
+                          ? `${b.runsBat + b.extraRuns}nb`
+                          : b.runsBat}
+                      </span>
+                    ))}
+                  </div>
+
+                  {/* Both batsmen + bowler's full figure */}
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-cyan-900/40 pt-2">
+                    <span className="text-slate-200 font-bold truncate">
+                      {strikerStat?.playerName || 'Striker'} <span className="text-slate-400 font-mono">{strikerStat?.runs ?? 0}({strikerStat?.balls ?? 0})</span>
+                    </span>
+                    <span className="text-slate-200 font-bold truncate text-right">
+                      {bowlerName}
+                    </span>
+                    <span className="text-slate-200 font-bold truncate">
+                      {nonStrikerStat?.playerName || 'Non-Striker'} <span className="text-slate-400 font-mono">{nonStrikerStat?.runs ?? 0}({nonStrikerStat?.balls ?? 0})</span>
+                    </span>
+                    <span className="text-slate-400 font-mono text-right">
+                      {bowlerFig ? `${bowlerFig.overs}.${bowlerFig.balls}-${bowlerFig.maidens}-${bowlerFig.runs}-${bowlerFig.wickets}` : ''}
+                    </span>
+                  </div>
+
+                  {/* Running match total */}
+                  <div className="flex items-center justify-between border-t border-cyan-900/40 pt-2 text-[11px] font-black">
+                    <span className="text-emerald-400">Overs {currentInnings.oversCompleted}</span>
+                    <span className="text-emerald-400">Runs {currentInnings.totalRuns}</span>
+                    <span className="text-emerald-400">Score {currentInnings.totalRuns}-{currentInnings.totalWickets}</span>
+                  </div>
+                </div>
+              );
+            })()}
 
             <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
               {bowlingSquad.map((p) => {
