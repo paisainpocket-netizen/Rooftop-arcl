@@ -54,6 +54,14 @@ export default function App() {
   const [isScoringConsoleOpen, setIsScoringConsoleOpen] = useState(false);
   const [selectedScorecardMatch, setSelectedScorecardMatch] = useState<Match | null>(null);
 
+  // A saved fixture (status 'setup') was never sent through the toss step
+  // when it was created — Save Fixture always deferred that decision. So
+  // when the user opens it later to actually play, we hold it here and show
+  // the toss prompt below instead of jumping straight into scoring.
+  const [pendingTossMatch, setPendingTossMatch] = useState<Match | null>(null);
+  const [tossWinnerChoice, setTossWinnerChoice] = useState<'A' | 'B'>('A');
+  const [tossDecisionChoice, setTossDecisionChoice] = useState<'bat' | 'bowl'>('bat');
+
   // High-Contrast Theme State (Dark vs Light)
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -890,12 +898,27 @@ export default function App() {
     setSelectedMatchForSettings(null);
   };
 
-  const handleResumeMatchGeneral = (match: Match) => {
-    setCurrentMatch(match);
-    setIsMatchSettingsOpen(false);
-    setSelectedMatchForSettings(null);
+  // Shared entry point for opening ANY match into the scorer. A saved
+  // fixture (status 'setup', never actually started/no balls bowled yet)
+  // always needs the toss decided first — this is the single place that
+  // check happens, so every "open this match" button (matches list, live
+  // feed, resume) is covered instead of only one of them.
+  const openMatchForScoring = (m: Match) => {
+    if (m.status === 'setup' && m.innings1.balls.length === 0 && m.innings2.balls.length === 0) {
+      setTossWinnerChoice('A');
+      setTossDecisionChoice('bat');
+      setPendingTossMatch(m);
+      return;
+    }
+    setCurrentMatch(m);
     setIsScoringConsoleOpen(true);
     setActiveTab('live');
+  };
+
+  const handleResumeMatchGeneral = (match: Match) => {
+    setIsMatchSettingsOpen(false);
+    setSelectedMatchForSettings(null);
+    openMatchForScoring(match);
   };
 
   const targetTeam = teams.find((t) => t.id === targetTeamIdForPlayer);
@@ -1018,10 +1041,7 @@ export default function App() {
                 setSelectedScorecardMatch(m);
                 setIsScorecardModalOpen(true);
               }}
-              onOpenScoring={(m) => {
-                setCurrentMatch(m);
-                setIsScoringConsoleOpen(true);
-              }}
+              onOpenScoring={(m) => openMatchForScoring(m)}
               onNewMatch={() => setIsCreateMatchOpen(true)}
               onOpenTournaments={() => setActiveTab('tournaments')}
               onOpenLoginModal={() => setIsLoginModalOpen(true)}
@@ -1037,11 +1057,7 @@ export default function App() {
             currentMatch={currentMatch}
             teams={teams}
             loggedInPlayer={loggedInPlayer}
-            onSelectMatch={(m) => {
-              setCurrentMatch(m);
-              setIsScoringConsoleOpen(true);
-              setActiveTab('live');
-            }}
+            onSelectMatch={(m) => openMatchForScoring(m)}
             onOpenCreateMatch={() => {
               setInitialTournamentIdForNewMatch('');
               setIsCreateMatchOpen(true);
@@ -1125,7 +1141,7 @@ export default function App() {
               setIsCreateMatchOpen(true);
             }}
             onSelectMatchToScore={(match) => {
-              handleResumeMatchGeneral(match);
+              openMatchForScoring(match);
             }}
             onUpdateTournament={handleUpdateTournament}
             loggedInPlayer={loggedInPlayer}
@@ -1428,7 +1444,123 @@ export default function App() {
         />
       )}
 
-      {inspectedPlayer && (
+      {/* Toss prompt for a saved fixture being started for the first time.
+          Rebuilds innings1/innings2/current players from the toss decision,
+          then hands off to the live scorer — mirrors CreateMatchModal's own
+          toss step so "Start Match" and "start a saved fixture" behave the
+          same way. */}
+      {pendingTossMatch && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-5 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between">
+              <h3 className="font-black text-white text-base">Who won the toss?</h3>
+              <button
+                onClick={() => setPendingTossMatch(null)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div
+                onClick={() => setTossWinnerChoice('A')}
+                className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col items-center text-center ${
+                  tossWinnerChoice === 'A' ? 'border-emerald-500 bg-emerald-950/40' : 'border-slate-800 bg-slate-950/60 opacity-60'
+                }`}
+              >
+                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl mb-1.5 shadow-md">
+                  {pendingTossMatch.teamA.logoIcon || '🦁'}
+                </div>
+                <span className="text-xs font-black text-white uppercase">{pendingTossMatch.teamA.name}</span>
+              </div>
+              <div
+                onClick={() => setTossWinnerChoice('B')}
+                className={`p-3 rounded-2xl border-2 cursor-pointer transition flex flex-col items-center text-center ${
+                  tossWinnerChoice === 'B' ? 'border-emerald-500 bg-emerald-950/40' : 'border-slate-800 bg-slate-950/60 opacity-60'
+                }`}
+              >
+                <div className="w-14 h-14 rounded-full bg-slate-800 flex items-center justify-center text-2xl mb-1.5 shadow-md">
+                  {pendingTossMatch.teamB.logoIcon || '⚡'}
+                </div>
+                <span className="text-xs font-black text-white uppercase">{pendingTossMatch.teamB.name}</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 block text-center">Decided to?</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTossDecisionChoice('bat')}
+                  className={`py-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                    tossDecisionChoice === 'bat' ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'
+                  }`}
+                >
+                  Bat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTossDecisionChoice('bowl')}
+                  className={`py-2 rounded-xl text-xs font-black transition cursor-pointer border ${
+                    tossDecisionChoice === 'bowl' ? 'bg-emerald-600 text-white border-emerald-500 shadow-md' : 'bg-slate-950 text-slate-400 border-slate-800'
+                  }`}
+                >
+                  Bowl
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                cricketAudio.playClick();
+                const m = pendingTossMatch;
+                const tossWinnerTeamId = tossWinnerChoice === 'A' ? m.teamA.id : m.teamB.id;
+                const initialBattingTeam =
+                  tossWinnerTeamId === m.teamA.id
+                    ? (tossDecisionChoice === 'bat' ? m.teamA : m.teamB)
+                    : (tossDecisionChoice === 'bat' ? m.teamB : m.teamA);
+                const initialBowlingTeam = initialBattingTeam.id === m.teamA.id ? m.teamB : m.teamA;
+
+                const battingPlayingIds = initialBattingTeam.id === m.teamA.id ? m.playingSquadA : m.playingSquadB;
+                const bowlingPlayingIds = initialBowlingTeam.id === m.teamA.id ? m.playingSquadA : m.playingSquadB;
+                const battingPlayingPlayers = initialBattingTeam.players.filter((p) => battingPlayingIds.includes(p.id));
+                const bowlingPlayingPlayers = initialBowlingTeam.players.filter((p) => bowlingPlayingIds.includes(p.id));
+
+                const striker = battingPlayingPlayers[0] || initialBattingTeam.players[0] || { id: 'p1', name: 'Striker' };
+                const nonStriker = battingPlayingPlayers[1] || battingPlayingPlayers[0] || initialBattingTeam.players[1] || { id: 'p2', name: 'Non-Striker' };
+                const bowler = bowlingPlayingPlayers[0] || initialBowlingTeam.players[0] || { id: 'b1', name: 'Bowler' };
+
+                const readyMatch: Match = {
+                  ...m,
+                  tossWinnerTeamId,
+                  tossDecision: tossDecisionChoice,
+                  status: 'live',
+                  currentStrikerId: striker.id,
+                  currentNonStrikerId: nonStriker.id,
+                  currentBowlerId: bowler.id,
+                  innings1: { ...m.innings1, teamId: initialBattingTeam.id, teamName: initialBattingTeam.name },
+                  innings2: { ...m.innings2, teamId: initialBowlingTeam.id, teamName: initialBowlingTeam.name },
+                  innings3: m.innings3 ? { ...m.innings3, teamId: initialBattingTeam.id, teamName: initialBattingTeam.name } : m.innings3,
+                  innings4: m.innings4 ? { ...m.innings4, teamId: initialBowlingTeam.id, teamName: initialBowlingTeam.name } : m.innings4,
+                  updatedAt: Date.now(),
+                };
+
+                setPendingTossMatch(null);
+                setCurrentMatch(readyMatch);
+                setIsScoringConsoleOpen(true);
+                setActiveTab('live');
+              }}
+              className="w-full py-3 rounded-2xl bg-teal-600 hover:bg-teal-500 text-white text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-lg shadow-teal-600/30"
+            >
+              START SCORING
+            </button>
+          </div>
+        </div>
+      )}
+
+
         <PlayerProfileModal
           isOpen={!!inspectedPlayer}
           onClose={() => setInspectedPlayerId(null)}
