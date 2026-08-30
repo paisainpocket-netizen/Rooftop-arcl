@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+/* Prevents the "zoomed-out page with white space on the right" look on
+   mobile browsers. If any element inside the app ever becomes even
+   slightly wider than the screen, mobile browsers shrink the whole page
+   to fit it — this locks the page to the actual screen width instead, and
+   the dark background-color means even a stray sliver of overflow blends
+   in instead of showing as a jarring white gap. */
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: #020617;
+}
+
+#root {
+  overflow-x: hidden;
+}
