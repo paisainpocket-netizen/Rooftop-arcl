@@ -1561,6 +1561,7 @@ export default function App() {
       )}
 
 
+      {inspectedPlayer && (
         <PlayerProfileModal
           isOpen={!!inspectedPlayer}
           onClose={() => setInspectedPlayerId(null)}
