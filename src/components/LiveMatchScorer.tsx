@@ -117,6 +117,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   const [dismissedRole, setDismissedRole] = useState<'striker' | 'nonStriker'>('striker');
   const [fielderId, setFielderId] = useState<string>('');
   const [isBowlerModalOpen, setIsBowlerModalOpen] = useState(false);
+  // Quick-select panel shown when Wide or No Ball is tapped, so the scorer
+  // can pick how many runs were run in addition to the wide/no-ball penalty
+  // (or, for a no-ball, how many runs the batsman hit off the bat) instead
+  // of every wide/no-ball always being scored as a flat 1 run.
+  const [activeExtraPanel, setActiveExtraPanel] = useState<'wide' | 'noBall' | null>(null);
   const [newInningsStrikerId, setNewInningsStrikerId] = useState('');
   const [newInningsNonStrikerId, setNewInningsNonStrikerId] = useState('');
   const [newInningsBowlerId, setNewInningsBowlerId] = useState('');
@@ -341,6 +346,87 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   // Last 12 balls & current over deliveries
   const recentBalls = [...currentInnings.balls].slice(-12);
+
+  // For each over that has FULLY completed, capture what the score/figures
+  // actually were at that exact moment (not the innings' final numbers) —
+  // by replaying the deliveries in order and snapshotting state whenever a
+  // legal ball completes an over. Used by the Ball-by-Ball tab to show a
+  // historically accurate over-end summary card, the same way a real
+  // scorecard shows "at the end of over 5" rather than "as of right now".
+  const overEndSnapshots = useMemo(() => {
+    const snapshots = new Map<number, {
+      strikerId: string; strikerName: string; strikerRuns: number; strikerBalls: number;
+      nonStrikerId: string; nonStrikerName: string; nonStrikerRuns: number; nonStrikerBalls: number;
+      bowlerName: string; bowlerFigure: string;
+      teamOvers: number; teamRuns: number; teamWickets: number;
+    }>();
+
+    const batRuns: Record<string, number> = {};
+    const batBalls: Record<string, number> = {};
+    const bowlLegalBalls: Record<string, number> = {};
+    const bowlRuns: Record<string, number> = {};
+    const bowlWickets: Record<string, number> = {};
+    const bowlMaidens: Record<string, number> = {};
+
+    let teamLegalBalls = 0;
+    let teamRuns = 0;
+    let teamWickets = 0;
+    let legalBallsSinceOverStart = 0;
+    let runsThisOverForBowler = 0;
+
+    // currentInnings.balls is always appended in chronological order, so no
+    // re-sort is needed before replaying them.
+    const sortedAsc = currentInnings.balls;
+
+    sortedAsc.forEach((b) => {
+      batRuns[b.strikerId] = (batRuns[b.strikerId] || 0) + b.runsBat;
+      batBalls[b.strikerId] = (batBalls[b.strikerId] || 0) + (b.extraType === 'wide' ? 0 : 1);
+
+      const bowlerRunsAdded = (b.extraType === 'bye' || b.extraType === 'legBye') ? 0 : (b.runsBat + b.extraRuns);
+      bowlRuns[b.bowlerId] = (bowlRuns[b.bowlerId] || 0) + bowlerRunsAdded;
+      runsThisOverForBowler += bowlerRunsAdded;
+      if (b.isWicket && !['runout', 'timed_out', 'retired'].includes(b.wicketType || '')) {
+        bowlWickets[b.bowlerId] = (bowlWickets[b.bowlerId] || 0) + 1;
+      }
+
+      teamRuns += b.runsBat + b.extraRuns;
+      if (b.isWicket) teamWickets += 1;
+
+      if (b.isLegalDelivery) {
+        teamLegalBalls += 1;
+        bowlLegalBalls[b.bowlerId] = (bowlLegalBalls[b.bowlerId] || 0) + 1;
+        legalBallsSinceOverStart += 1;
+
+        if (legalBallsSinceOverStart === 6) {
+          if (runsThisOverForBowler === 0) {
+            bowlMaidens[b.bowlerId] = (bowlMaidens[b.bowlerId] || 0) + 1;
+          }
+          const bOvers = Math.floor((bowlLegalBalls[b.bowlerId] || 0) / 6);
+          const bBalls = (bowlLegalBalls[b.bowlerId] || 0) % 6;
+          snapshots.set(b.overNumber, {
+            strikerId: b.strikerId,
+            strikerName: b.strikerName,
+            strikerRuns: batRuns[b.strikerId] || 0,
+            strikerBalls: batBalls[b.strikerId] || 0,
+            nonStrikerId: b.nonStrikerId,
+            nonStrikerName: b.nonStrikerName,
+            nonStrikerRuns: batRuns[b.nonStrikerId] || 0,
+            nonStrikerBalls: batBalls[b.nonStrikerId] || 0,
+            bowlerName: b.bowlerName,
+            bowlerFigure: `${bOvers}.${bBalls}-${bowlMaidens[b.bowlerId] || 0}-${bowlRuns[b.bowlerId] || 0}-${bowlWickets[b.bowlerId] || 0}`,
+            teamOvers: Math.floor(teamLegalBalls / 6),
+            teamRuns,
+            teamWickets,
+          });
+          legalBallsSinceOverStart = 0;
+          runsThisOverForBowler = 0;
+        }
+      }
+    });
+
+    return snapshots;
+  }, [currentInnings.balls]);
+
   const currentOverBalls = currentInnings.balls.filter(
     (b) => b.overNumber === currentInnings.oversCompleted
   );
@@ -1848,7 +1934,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleScoreBall(0, 'wide', 1)}
+                  onClick={() => setActiveExtraPanel('wide')}
                   disabled={isMatchFinished}
                   className="h-13 sm:h-14 rounded-2xl bg-gradient-to-b from-orange-500/90 to-amber-600/90 text-white font-black text-sm sm:text-base flex flex-col items-center justify-center shadow-md active:scale-90 transition cursor-pointer disabled:opacity-40"
                 >
@@ -1856,7 +1942,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 </button>
 
                 <button
-                  onClick={() => handleScoreBall(0, 'noBall', 1)}
+                  onClick={() => setActiveExtraPanel('noBall')}
                   disabled={isMatchFinished}
                   className="h-13 sm:h-14 rounded-2xl bg-gradient-to-b from-orange-500/90 to-amber-600/90 text-white font-black text-sm sm:text-base flex flex-col items-center justify-center shadow-md active:scale-90 transition cursor-pointer disabled:opacity-40"
                 >
@@ -2314,18 +2400,10 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                   const overRuns = ballsInOver.reduce((sum, b) => sum + b.runsBat + b.extraRuns, 0);
                   const overWickets = ballsInOver.filter((b) => b.isWicket).length;
                   const bowlerName = ballsInOver[0]?.bowlerName || '';
+                  const snap = overEndSnapshots.get(overNum);
 
                   return (
                     <div key={overNum} className="space-y-1.5">
-                      <div className="flex items-center justify-between px-1">
-                        <span className="text-[11px] font-black text-cyan-400 uppercase tracking-wide">
-                          Over {overNum + 1} • {bowlerName}
-                        </span>
-                        <span className="text-[11px] font-mono font-black text-slate-300">
-                          {overRuns} run{overRuns === 1 ? '' : 's'}
-                          {overWickets > 0 ? ` • ${overWickets} wkt${overWickets === 1 ? '' : 's'}` : ''}
-                        </span>
-                      </div>
                       {[...ballsInOver].reverse().map((b) => (
                         <div
                           key={b.id}
@@ -2366,6 +2444,55 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                           </div>
                         </div>
                       ))}
+
+                      {/* Over-end summary card — only appears for an over
+                          that fully completed (6 legal balls), showing the
+                          score exactly as it stood at that moment. */}
+                      {snap && (
+                        <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-3 space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {ballsInOver.map((b) => (
+                              <span
+                                key={b.id}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-mono font-black ${
+                                  b.isWicket
+                                    ? 'bg-rose-600 text-white'
+                                    : b.isSix
+                                    ? 'bg-purple-600 text-white'
+                                    : b.isFour
+                                    ? 'bg-blue-600 text-white'
+                                    : b.extraType !== 'none'
+                                    ? 'bg-transparent border border-slate-500 text-slate-300'
+                                    : 'bg-slate-700 text-slate-200'
+                                }`}
+                              >
+                                {b.isWicket
+                                  ? 'W'
+                                  : b.extraType === 'wide'
+                                  ? 'Wd'
+                                  : b.extraType === 'noBall'
+                                  ? 'Nb'
+                                  : b.runsBat}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-slate-800 pt-2">
+                            <span className="text-slate-200 font-bold truncate">
+                              {snap.strikerName} <span className="text-slate-400 font-mono">{snap.strikerRuns}({snap.strikerBalls})</span>
+                            </span>
+                            <span className="text-slate-200 font-bold truncate text-right">{snap.bowlerName}</span>
+                            <span className="text-slate-200 font-bold truncate">
+                              {snap.nonStrikerName} <span className="text-slate-400 font-mono">{snap.nonStrikerRuns}({snap.nonStrikerBalls})</span>
+                            </span>
+                            <span className="text-slate-400 font-mono text-right">{snap.bowlerFigure}</span>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-[11px] font-black">
+                            <span className="text-emerald-400">Overs {snap.teamOvers}</span>
+                            <span className="text-emerald-400">Runs {snap.teamRuns}</span>
+                            <span className="text-emerald-400">Score {snap.teamRuns}-{snap.teamWickets}</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 });
@@ -2903,7 +3030,70 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
         </div>
       )}
 
-      {/* WICKET MODAL */}
+      {/* Wide / No Ball quick-select bottom sheet. Wide runs are ALWAYS
+          extras (the batsman can't be credited for hitting a wide), so
+          "3+Wd" scores runsBat=0, extraRuns = wideRuns + 3. A No Ball's
+          runs off the bat DO count as the batsman's runs, with the no-ball
+          penalty added separately, so "3 NB" scores runsBat=3,
+          extraRuns = noBallRuns (usually 1). */}
+      {activeExtraPanel && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setActiveExtraPanel(null)}
+          />
+          <div className="relative w-full max-w-md rounded-t-3xl bg-amber-500 p-4 space-y-3 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setActiveExtraPanel(null)}
+                className="p-1.5 rounded-xl bg-black/10 text-slate-900 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="font-black text-lg text-slate-950">
+                {activeExtraPanel === 'wide' ? 'Wide' : 'No Ball'}
+              </h3>
+              <div className="w-8" />
+            </div>
+
+            {activeExtraPanel === 'wide' ? (
+              <div className="grid grid-cols-4 gap-2">
+                {[0, 1, 2, 3, 4, 5, 6].map((extraRun) => (
+                  <button
+                    key={extraRun}
+                    onClick={() => {
+                      const wideBase = match.settings.wideRuns || 1;
+                      handleScoreBall(0, 'wide', wideBase + extraRun);
+                      setActiveExtraPanel(null);
+                    }}
+                    className="py-3 rounded-2xl bg-slate-950 text-white font-black text-sm cursor-pointer active:scale-90 transition"
+                  >
+                    {extraRun === 0 ? 'Wd' : `${extraRun}+Wd`}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-4 gap-2">
+                {[0, 1, 2, 3, 4, 6].map((runsOffBat) => (
+                  <button
+                    key={runsOffBat}
+                    onClick={() => {
+                      const noBallBase = match.settings.noBallRuns || 1;
+                      handleScoreBall(runsOffBat, 'noBall', noBallBase);
+                      setActiveExtraPanel(null);
+                    }}
+                    className="py-3 rounded-2xl bg-slate-950 text-white font-black text-sm cursor-pointer active:scale-90 transition"
+                  >
+                    {runsOffBat === 0 ? 'NB' : `${runsOffBat}NB`}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
       {isWicketModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
           <div

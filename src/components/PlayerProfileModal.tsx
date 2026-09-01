@@ -31,6 +31,12 @@ interface PlayerProfileModalProps {
   teams: Team[];
   isDarkMode: boolean;
   onOpenLoginModal?: () => void;
+  // When provided (only for the logged-in admin), a "Reset to 0" button
+  // appears on each format card, letting the admin manually zero out just
+  // that one format's stats for this player — without touching any other
+  // format's numbers and without deleting any match.
+  isAdmin?: boolean;
+  onResetPlayerFormatStats?: (playerId: string, formatKey: 't10' | 't20' | 'club' | 'test') => void;
 }
 
 type MatchFormatKey = 'all' | 't10' | 't20' | 'club' | 'test';
@@ -80,6 +86,8 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   teams,
   isDarkMode,
   onOpenLoginModal,
+  isAdmin,
+  onResetPlayerFormatStats,
 }) => {
   const [activeTab, setActiveTab] = useState<'statistics' | 'formats' | 'overview' | 'matches' | 'teams'>('statistics');
   const [statsSubTab, setStatsSubTab] = useState<'bat' | 'bowl' | 'field' | 'matchwise'>('bat');
@@ -102,22 +110,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       const myTeam = isTeamA ? m.teamA : isTeamB ? m.teamB : null;
       const oppTeam = isTeamA ? m.teamB : isTeamB ? m.teamA : null;
 
-      // Look across all 4 possible innings slots (Test matches can have up
-      // to 4), not just innings1/innings2 — otherwise a player's 2nd dig
-      // (e.g. batting again in innings3 after a follow-on decision) was
-      // silently dropped from this list entirely.
-      const inningsSlots = [m.innings1, m.innings2, m.innings3, m.innings4];
-      const battingEntries = inningsSlots
-        .map((inn) => inn?.battingStats?.[player.id])
-        .filter((s): s is NonNullable<typeof s> => Boolean(s));
-      const bowlingEntries = inningsSlots
-        .map((inn) => inn?.bowlingStats?.[player.id])
-        .filter((s): s is NonNullable<typeof s> => Boolean(s));
+      const bat1 = m.innings1?.battingStats?.[player.id];
+      const bat2 = m.innings2?.battingStats?.[player.id];
+      const batStat = bat1 || bat2 || null;
 
-      const batStat = battingEntries[0] || null;
-      const batStat2 = battingEntries[1] || null;
-      const bowlStat = bowlingEntries[0] || null;
-      const bowlStat2 = bowlingEntries[1] || null;
+      const bowl1 = m.innings1?.bowlingStats?.[player.id];
+      const bowl2 = m.innings2?.bowlingStats?.[player.id];
+      const bowlStat = bowl1 || bowl2 || null;
 
       const played = Boolean(isTeamA || isTeamB || batStat || bowlStat);
       
@@ -129,7 +128,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       else if (matchFmt.includes('club') || matchFmt.includes('terrace')) formatKey = 'club';
       else formatKey = 't10';
 
-      return { match: m, myTeam, oppTeam, batStat, batStat2, bowlStat, bowlStat2, played, formatKey };
+      return { match: m, myTeam, oppTeam, batStat, bowlStat, played, formatKey };
     })
     .filter((item) => item.played);
 
@@ -532,7 +531,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                           No match performance records available for format "{selectedFormat.toUpperCase()}".
                         </div>
                       ) : (
-                        filteredMatches.map(({ match: m, oppTeam, batStat, batStat2, bowlStat, bowlStat2 }) => (
+                        filteredMatches.map(({ match: m, oppTeam, batStat, bowlStat }) => (
                           <div
                             key={m.id}
                             className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2"
@@ -548,9 +547,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
                             <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                               <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80">
-                                <span className="text-[10px] text-slate-400 block font-sans">
-                                  {batStat2 ? '1st Inns Batting' : 'Batting'}
-                                </span>
+                                <span className="text-[10px] text-slate-400 block font-sans">Batting</span>
                                 <span className="font-bold text-rose-300">
                                   {batStat
                                     ? `${batStat.runs} runs (${batStat.balls}b, ${batStat.fours}x4, ${batStat.sixes}x6) ${
@@ -561,37 +558,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                               </div>
 
                               <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80">
-                                <span className="text-[10px] text-slate-400 block font-sans">
-                                  {bowlStat2 ? '1st Inns Bowling' : 'Bowling'}
-                                </span>
+                                <span className="text-[10px] text-slate-400 block font-sans">Bowling</span>
                                 <span className="font-bold text-emerald-300">
                                   {bowlStat
                                     ? `${bowlStat.wickets}/${bowlStat.runs} (${bowlStat.overs} ov)`
                                     : 'Did not bowl'}
                                 </span>
                               </div>
-
-                              {/* 2nd innings row — only appears for Test matches where this
-                                  player batted/bowled a second time (e.g. after a follow-on
-                                  decision). Previously this data existed but was never shown. */}
-                              {batStat2 && (
-                                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80">
-                                  <span className="text-[10px] text-slate-400 block font-sans">2nd Inns Batting</span>
-                                  <span className="font-bold text-rose-300">
-                                    {`${batStat2.runs} runs (${batStat2.balls}b, ${batStat2.fours}x4, ${batStat2.sixes}x6) ${
-                                      batStat2.isOut ? '' : '*'
-                                    }`}
-                                  </span>
-                                </div>
-                              )}
-                              {bowlStat2 && (
-                                <div className="p-2 rounded-xl bg-slate-900 border border-slate-800/80">
-                                  <span className="text-[10px] text-slate-400 block font-sans">2nd Inns Bowling</span>
-                                  <span className="font-bold text-emerald-300">
-                                    {`${bowlStat2.wickets}/${bowlStat2.runs} (${bowlStat2.overs} ov)`}
-                                  </span>
-                                </div>
-                              )}
                             </div>
                           </div>
                         ))
@@ -701,6 +674,19 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                             <span className="text-emerald-300 font-bold">{f.stats.wickets} ({f.stats.economy ? f.stats.economy.toFixed(1) : '-'})</span>
                           </div>
                         </div>
+                        {isAdmin && onResetPlayerFormatStats && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (window.confirm(`Reset ${player.name}'s ${f.label} stats to 0? Other formats (including Test) are not affected. This cannot be undone.`)) {
+                                onResetPlayerFormatStats(player.id, f.key as 't10' | 't20' | 'club' | 'test');
+                              }
+                            }}
+                            className="w-full py-1.5 rounded-lg bg-rose-950/40 border border-rose-800/50 text-rose-300 text-[10px] font-bold uppercase tracking-wide hover:bg-rose-900/40 cursor-pointer"
+                          >
+                            Reset {f.label} to 0
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
