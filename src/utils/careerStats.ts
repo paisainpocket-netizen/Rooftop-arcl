@@ -167,7 +167,7 @@ export function computeMatchPlayerDelta(match: Match, playerId: string): StatsDe
   return delta;
 }
 
-function emptyPlayerStats(): PlayerStats {
+export function emptyPlayerStats(): PlayerStats {
   return {
     matches: 0,
     innings: 0,
@@ -307,7 +307,16 @@ export function applyMatchStatsToPlayers(players: Player[], match: Match): Playe
     if (!delta) return player;
 
     const newOverallStats = mergeStatsWithDelta(player.stats, delta);
-    const existingFormatStats = player.formatStats?.[formatKey] || player.stats;
+    // BUG FIX: this used to fall back to `player.stats` (the player's
+    // OVERALL career total across every format) whenever this was their
+    // first-ever match in this particular format. That silently copied
+    // their entire cross-format history as the "starting point" for the
+    // new format bucket — e.g. a player's first Test match would inherit
+    // all their prior Club runs/average/etc., making Test and Club show
+    // identical numbers despite being different matches. A brand-new
+    // format bucket must start truly empty, exactly like recalculateCareerStats
+    // already does correctly above.
+    const existingFormatStats = player.formatStats?.[formatKey] || emptyPlayerStats();
     const newFormatStats = mergeStatsWithDelta(existingFormatStats, delta);
 
     return {
