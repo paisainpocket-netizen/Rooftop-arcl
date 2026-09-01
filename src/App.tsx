@@ -35,7 +35,7 @@ import { ShareMatchCard } from './components/ShareMatchCard';
 import { Play, Trophy, Users, User, Shield, Sparkles, HelpCircle, AlertTriangle, X } from 'lucide-react';
 import { cricketAudio } from './utils/audio';
 import { cloudDb, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
-import { applyMatchStatsToPlayers, recalculateCareerStats } from './utils/careerStats';
+import { applyMatchStatsToPlayers, recalculateCareerStats, emptyPlayerStats } from './utils/careerStats';
 
 const STORAGE_KEY_MATCH = 'arcl_current_match_v2';
 const STORAGE_KEY_SAVED_MATCHES = 'arcl_saved_matches_v2';
@@ -565,6 +565,31 @@ export default function App() {
         return updatedTeam;
       })
     );
+  };
+
+  // Admin-only: manually zero out ONE player's stats for ONE specific
+  // format (e.g. just their Club record), leaving every other format
+  // (Test, T10, T20) and every match's actual data completely untouched.
+  // Use case: fixing a player's historical record that got corrupted by a
+  // now-fixed bug, without deleting any match or touching other formats.
+  const handleResetPlayerFormatStats = (playerId: string, formatKey: 't10' | 't20' | 'club' | 'test') => {
+    setPlayers((prev) => {
+      const updated = prev.map((p) => {
+        if (p.id !== playerId) return p;
+        return {
+          ...p,
+          formatStats: {
+            ...p.formatStats,
+            [formatKey]: emptyPlayerStats(),
+          },
+        };
+      });
+      const changedPlayer = updated.find((p) => p.id === playerId);
+      if (changedPlayer) {
+        cloudDb.savePlayer(changedPlayer).catch(console.warn);
+      }
+      return updated;
+    });
   };
 
   const handleDeletePlayer = (playerId: string) => {
@@ -1570,6 +1595,8 @@ export default function App() {
           teams={teams}
           isDarkMode={isDarkMode}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
+          isAdmin={isAdmin}
+          onResetPlayerFormatStats={handleResetPlayerFormatStats}
         />
       )}
 
