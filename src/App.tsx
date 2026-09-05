@@ -195,6 +195,10 @@ export default function App() {
   const [isMatchSettingsOpen, setIsMatchSettingsOpen] = useState(false);
   const [selectedMatchForSettings, setSelectedMatchForSettings] = useState<Match | null>(null);
   const [initialTournamentIdForNewMatch, setInitialTournamentIdForNewMatch] = useState<string>('');
+  // Which tournament "View Tournament" (from a match card) should jump to
+  // when the Tournaments tab opens. Separate from the "create match for
+  // this tournament" state above so the two flows never collide.
+  const [viewTournamentId, setViewTournamentId] = useState<string>('');
   const [targetTeamIdForPlayer, setTargetTeamIdForPlayer] = useState<string>('');
   const [isScorecardModalOpen, setIsScorecardModalOpen] = useState(false);
   const [isShareCardOpen, setIsShareCardOpen] = useState(false);
@@ -1096,6 +1100,10 @@ export default function App() {
               setIsScorecardModalOpen(true);
             }}
             onOpenMatchSettings={handleOpenMatchSettings}
+            onOpenTournament={(tournamentId) => {
+              setViewTournamentId(tournamentId);
+              setActiveTab('tournaments');
+            }}
             onDeleteMatch={(id) => {
               handleDeleteMatchGeneral(id);
             }}
@@ -1171,6 +1179,7 @@ export default function App() {
             onUpdateTournament={handleUpdateTournament}
             loggedInPlayer={loggedInPlayer}
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
+            initialTournamentId={viewTournamentId}
           />
         )}
 
