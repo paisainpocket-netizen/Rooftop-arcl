@@ -1,11 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Tournament, Team, Match, PointsTableRow, Player, TeamTournamentStatus } from '../types/cricket';
 import { Plus, Trophy, Sparkles, Calendar, MapPin, Play, FileText, Settings, Edit3, Image as ImageIcon, X, Check, Camera, Eye, Users, Shield, Copy, Hash, Award, Flame, Zap, CheckCircle2, XCircle, Crown, Sliders, ChevronDown, BarChart3, Target, Gem, Star } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { TeamProfileModal } from './TeamProfileModal';
 import { calculateTournamentStats, TournamentPlayerStat, bestBowlingLabel } from '../utils/tournamentStats';
 
-type StatsTab = 'points' | 'mvp' | 'runs' | 'wickets' | 'fielding' | 'boundaries';
+type StatsTab = 'points' | 'mvp' | 'runs' | 'wickets' | 'fielding' | 'boundaries' | 'dots' | 'ballsFaced';
 
 export const STATUS_CONFIG: Record<
   TeamTournamentStatus,
@@ -94,9 +94,6 @@ interface StatColumn {
   render: (row: TournamentPlayerStat) => React.ReactNode;
 }
 
-// Generic ranked player-leaderboard table used for MVP / Most Runs / Most
-// Wickets / Fielding / Boundaries tabs — keeps each tab's markup tiny while
-// sharing the same rank badges, player/team styling, and empty-state.
 const PlayerStatPanel: React.FC<{
   title: string;
   subtitle: string;
@@ -177,6 +174,7 @@ interface TournamentManagerProps {
   onUpdateTournament?: (tournament: Tournament) => void;
   loggedInPlayer?: Player | null;
   onOpenLoginModal?: () => void;
+  initialTournamentId?: string;
 }
 
 export const TournamentManager: React.FC<TournamentManagerProps> = ({
@@ -191,10 +189,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   onUpdateTournament,
   loggedInPlayer = null,
   onOpenLoginModal,
+  initialTournamentId,
 }) => {
   const [tabFilter, setTabFilter] = useState<'my' | 'all'>('all');
-  const [selectedTourId, setSelectedTourId] = useState<string>(tournaments[0]?.id || '');
+  const [selectedTourId, setSelectedTourId] = useState<string>(initialTournamentId || tournaments[0]?.id || '');
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
+
+  useEffect(() => {
+    if (initialTournamentId) {
+      setSelectedTourId(initialTournamentId);
+      setTabFilter('all');
+    }
+  }, [initialTournamentId]);
 
   const isAdmin = Boolean(
     loggedInPlayer &&
@@ -222,6 +228,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const selectedTournament = useMemo(() => {
     return (
       displayedTournaments.find((t) => t.id === selectedTourId) ||
+      tournaments.find((t) => t.id === selectedTourId) ||
       displayedTournaments[0] ||
       tournaments[0]
     );
@@ -232,7 +239,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     (loggedInPlayer.profileId === 'ARCL-001')
   );
 
-  // STRICT CREATOR CHECK: Only the tournament creator or Master Admin can edit or change team qualification / playoff statuses
   const canEditSelectedTournament = Boolean(
     loggedInPlayer &&
     (isMasterAdmin ||
@@ -240,7 +246,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
      (selectedTournament?.creatorProfileId && selectedTournament.creatorProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase()))
   );
 
-  // Edit Tournament Modal State
   const [isEditingTournament, setIsEditingTournament] = useState(false);
   const [inspectedTeam, setInspectedTeam] = useState<Team | null>(null);
   const [selectedTeamForStatusModal, setSelectedTeamForStatusModal] = useState<Team | null>(null);
@@ -348,7 +353,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     setIsEditingTournament(false);
   };
 
-  // Calculate dynamic Points Table for selected tournament (memoized)
   const tournamentMatches = useMemo(() => {
     if (!selectedTournament?.id) return [];
     return (allMatches || []).filter((m) => m && m.tournamentId === selectedTournament.id);
@@ -359,7 +363,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
     const tableMap: { [teamId: string]: PointsTableRow } = {};
 
-    // Initialize for all tournament teams
     (selectedTournament?.teams || []).forEach((tId) => {
       const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
       if (teamObj?.id) {
@@ -384,7 +387,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       }
     });
 
-    // Process completed and live matches
     (tournamentMatches || []).forEach((m) => {
       if (m && m.status === 'completed' && m.result) {
         const teamAId = m.teamA?.id;
@@ -419,34 +421,36 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           }
         }
 
-        // Add runs and overs for NRR
-        const inn1 = m.innings1;
-        const inn2 = m.innings2;
-        if (inn1 && inn2) {
-          const inn1TeamId = inn1.teamId;
-          const inn2TeamId = inn2.teamId;
+        // NRR: process every innings that actually exists (1 to 4), not
+        // just innings1/innings2. A Test match's 3rd/4th innings were
+        // previously skipped entirely here — a team's second dig (e.g.
+        // after a follow-on decision) contributed nothing to their runs
+        // scored/conceded, silently skewing NRR for every Test match.
+        // Each innings' `teamId` already says who batted it, so the
+        // opposing team (whichever side of teamA/teamB isn't the batting
+        // team) is credited with conceding it — this works the same way
+        // regardless of how many innings the match format has.
+        const teamAId = m.teamA?.id;
+        const teamBId = m.teamB?.id;
+        ([m.innings1, m.innings2, m.innings3, m.innings4] as const).forEach((inn) => {
+          if (!inn) return;
+          const battingTeamId = inn.teamId;
+          if (!battingTeamId) return;
+          const bowlingTeamId = battingTeamId === teamAId ? teamBId : battingTeamId === teamBId ? teamAId : undefined;
+          const oversFaced = (inn.oversCompleted || 0) + (inn.ballsInCurrentOver || 0) / 6;
 
-          const inn1Overs = (inn1.oversCompleted || 0) + (inn1.ballsInCurrentOver || 0) / 6;
-          const inn2Overs = (inn2.oversCompleted || 0) + (inn2.ballsInCurrentOver || 0) / 6;
-
-          if (inn1TeamId && tableMap[inn1TeamId]) {
-            tableMap[inn1TeamId].runsScored += inn1.totalRuns || 0;
-            tableMap[inn1TeamId].oversFaced += Math.max(1, inn1Overs);
-            tableMap[inn1TeamId].runsConceded += inn2.totalRuns || 0;
-            tableMap[inn1TeamId].oversBowled += Math.max(1, inn2Overs);
+          if (tableMap[battingTeamId]) {
+            tableMap[battingTeamId].runsScored += inn.totalRuns || 0;
+            tableMap[battingTeamId].oversFaced += Math.max(1, oversFaced);
           }
-
-          if (inn2TeamId && tableMap[inn2TeamId]) {
-            tableMap[inn2TeamId].runsScored += inn2.totalRuns || 0;
-            tableMap[inn2TeamId].oversFaced += Math.max(1, inn2Overs);
-            tableMap[inn2TeamId].runsConceded += inn1.totalRuns || 0;
-            tableMap[inn2TeamId].oversBowled += Math.max(1, inn1Overs);
+          if (bowlingTeamId && tableMap[bowlingTeamId]) {
+            tableMap[bowlingTeamId].runsConceded += inn.totalRuns || 0;
+            tableMap[bowlingTeamId].oversBowled += Math.max(1, oversFaced);
           }
-        }
+        });
       }
     });
 
-    // Compute NRR
     return Object.values(tableMap)
       .map((row) => {
         const forRR = row.oversFaced > 0 ? row.runsScored / row.oversFaced : 0;
@@ -460,9 +464,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       });
   }, [selectedTournament, teams, tournamentMatches]);
 
-  // Full tournament-wide player stats (Most Runs, Most Wickets, Fielding,
-  // Boundaries, MVP) — replayed from every completed match of this
-  // tournament across all 14 (or however many) participating teams.
   const tournamentPlayerStats = useMemo((): TournamentPlayerStat[] => {
     return calculateTournamentStats(tournamentMatches);
   }, [tournamentMatches]);
@@ -490,6 +491,14 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     () => [...tournamentPlayerStats].filter((p) => p.sixes > 0).sort((a, b) => b.sixes - a.sixes),
     [tournamentPlayerStats]
   );
+  const mostDotsList = useMemo(
+    () => [...tournamentPlayerStats].filter((p) => p.dots > 0).sort((a, b) => b.dots - a.dots),
+    [tournamentPlayerStats]
+  );
+  const mostBallsFacedList = useMemo(
+    () => [...tournamentPlayerStats].filter((p) => p.ballsFaced > 0).sort((a, b) => b.ballsFaced - a.ballsFaced),
+    [tournamentPlayerStats]
+  );
   const mvpList = useMemo(
     () => [...tournamentPlayerStats].sort((a, b) => b.mvpPoints - a.mvpPoints),
     [tournamentPlayerStats]
@@ -502,11 +511,12 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     { key: 'wickets', label: 'Most Wickets', icon: <Target className="w-3.5 h-3.5" /> },
     { key: 'fielding', label: 'Fielding', icon: <Shield className="w-3.5 h-3.5" /> },
     { key: 'boundaries', label: '4s / 6s', icon: <Zap className="w-3.5 h-3.5" /> },
+    { key: 'ballsFaced', label: 'Most Balls Faced', icon: <Eye className="w-3.5 h-3.5" /> },
+    { key: 'dots', label: 'Bowl Dots', icon: <Sliders className="w-3.5 h-3.5" /> },
   ];
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
       <div className="p-6 rounded-3xl border border-slate-800 bg-slate-900 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -536,7 +546,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         )}
       </div>
 
-      {/* Segment Filter: All Tournaments vs My Tournaments */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-slate-900 border border-slate-800">
           <button
@@ -573,7 +582,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         </div>
       </div>
 
-      {/* Tournament Selector Pill bar */}
       <div className="flex items-center gap-2 overflow-x-auto pb-1">
         {displayedTournaments.length === 0 ? (
           <div className="text-xs text-slate-500 py-2">
@@ -605,7 +613,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
       {selectedTournament && (
         <div className="space-y-6">
-          {/* Tournament Overview Card with Banner Photo */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900 shadow-xl overflow-hidden">
             {selectedTournament.bannerImage && (
               <div className="w-full h-36 sm:h-48 relative overflow-hidden bg-slate-950">
@@ -679,7 +686,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             </div>
           </div>
 
-          {/* Full Stats & Leaderboard — Interactive Tabs */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900 shadow-xl overflow-hidden">
             <div className="p-4 sm:p-5 bg-slate-950/80 border-b border-slate-800">
               <div className="flex items-center gap-2.5 mb-3">
@@ -749,15 +755,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               <table className="w-full text-left text-xs font-mono">
                 <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-sans border-b border-slate-800">
                   <tr>
-                    <th className="p-3.5">Pos & Team</th>
-                    <th className="p-3.5 text-center">ARCL Status</th>
-                    <th className="p-3.5 text-center">P</th>
-                    <th className="p-3.5 text-center">W</th>
-                    <th className="p-3.5 text-center">L</th>
-                    <th className="p-3.5 text-center">T</th>
-                    <th className="p-3.5 text-center">NRR</th>
-                    <th className="p-3.5 text-center">Form</th>
-                    <th className="p-3.5 text-right font-black">PTS</th>
+                    <th className="p-2 sm:p-3.5">Pos & Team</th>
+                    <th className="p-2 sm:p-3.5 text-center">Status</th>
+                    <th className="p-2 sm:p-3.5 text-center">P</th>
+                    <th className="p-2 sm:p-3.5 text-center">W</th>
+                    <th className="p-2 sm:p-3.5 text-center">L</th>
+                    <th className="p-2 sm:p-3.5 text-center">T</th>
+                    <th className="p-2 sm:p-3.5 text-center">NRR</th>
+                    <th className="p-2 sm:p-3.5 text-center">Form</th>
+                    <th className="p-2 sm:p-3.5 text-right font-black">PTS</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80">
@@ -793,7 +799,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             setInspectedTeam(matchedTeam);
                           }
                         }}
-                        className="p-3.5 font-sans flex items-center gap-2.5 cursor-pointer group"
+                        className="p-2 sm:p-3.5 font-sans flex items-center gap-2.5 cursor-pointer group"
                         title="Click to view Team Profile & Last 20 Matches"
                       >
                         <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
@@ -819,8 +825,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         )}
                       </td>
 
-                      {/* ARCL Status Badge Column with Creator-only selector vs Visitor view badge */}
-                      <td className="p-3.5 text-center font-sans">
+                      <td className="p-2 sm:p-3.5 text-center font-sans">
                         {canEditSelectedTournament ? (
                           <button
                             type="button"
@@ -848,16 +853,16 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         )}
                       </td>
 
-                      <td className="p-3.5 text-center text-slate-300">{row.played}</td>
-                      <td className="p-3.5 text-center text-emerald-400 font-bold">{row.won}</td>
-                      <td className="p-3.5 text-center text-rose-400 font-bold">{row.lost}</td>
-                      <td className="p-3.5 text-center text-amber-400">{row.tied}</td>
-                      <td className={`p-3.5 text-center font-bold ${
+                      <td className="p-2 sm:p-3.5 text-center text-slate-300">{row.played}</td>
+                      <td className="p-2 sm:p-3.5 text-center text-emerald-400 font-bold">{row.won}</td>
+                      <td className="p-2 sm:p-3.5 text-center text-rose-400 font-bold">{row.lost}</td>
+                      <td className="p-2 sm:p-3.5 text-center text-amber-400">{row.tied}</td>
+                      <td className={`p-2 sm:p-3.5 text-center font-bold ${
                         row.nrr >= 0 ? 'text-emerald-400' : 'text-rose-400'
                       }`}>
                         {row.nrr > 0 ? `+${row.nrr}` : row.nrr}
                       </td>
-                      <td className="p-3.5 text-center font-sans">
+                      <td className="p-2 sm:p-3.5 text-center font-sans">
                         <div className="flex items-center justify-center gap-1">
                           {row.form.slice(0, 5).map((f, fIdx) => (
                             <span
@@ -876,7 +881,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           {row.form.length === 0 && <span className="text-slate-600">-</span>}
                         </div>
                       </td>
-                      <td className="p-3.5 text-right font-black text-sm text-amber-400">
+                      <td className="p-2 sm:p-3.5 text-right font-black text-sm text-amber-400">
                         {row.points}
                       </td>
                     </tr>
@@ -979,9 +984,38 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 />
               </div>
             )}
+
+            {statsTab === 'ballsFaced' && (
+              <PlayerStatPanel
+                title="Most Balls Faced"
+                subtitle="Batting durability leaderboard across every completed match of this tournament"
+                emptyLabel="No batting data yet — matches need to be completed first."
+                rows={mostBallsFacedList}
+                columns={[
+                  { header: 'Balls', render: (p) => <span className="text-amber-400 font-black">{p.ballsFaced}</span> },
+                  { header: 'Runs', render: (p) => <span>{p.runs}</span> },
+                  { header: 'Inn', render: (p) => <span>{p.innings}</span> },
+                  { header: 'SR', render: (p) => <span>{p.strikeRate.toFixed(1)}</span> },
+                ]}
+              />
+            )}
+
+            {statsTab === 'dots' && (
+              <PlayerStatPanel
+                title="Bowl Dots"
+                subtitle="Dot balls bowled (no run off the bat) across every completed match of this tournament"
+                emptyLabel="No bowling data yet — matches need to be completed first."
+                rows={mostDotsList}
+                columns={[
+                  { header: 'Dots', render: (p) => <span className="text-amber-400 font-black">{p.dots}</span> },
+                  { header: 'Overs', render: (p) => <span>{p.oversBowled}</span> },
+                  { header: 'Wkts', render: (p) => <span>{p.wickets}</span> },
+                  { header: 'Econ', render: (p) => <span>{p.economy.toFixed(2)}</span> },
+                ]}
+              />
+            )}
           </div>
 
-          {/* ARCL Playoff & Knockout Stage Status Manager Panel */}
           {isStatusManagerOpen && (
             <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 sm:p-6 shadow-xl space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
@@ -1002,7 +1036,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Summary Chips */}
                 <div className="flex items-center gap-1.5 flex-wrap">
                   {(['qualified', 'semi_final', 'final', 'champion', 'eliminated'] as TeamTournamentStatus[]).map((st) => {
                     const count = Object.values(selectedTournament.teamStatuses || {}).filter((v) => v === st).length;
@@ -1020,7 +1053,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 </div>
               </div>
 
-              {/* Team list with direct 1-click status pills */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {(selectedTournament.teams || []).map((tId) => {
                   const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
@@ -1062,18 +1094,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           </div>
                         </div>
 
-                        {/* Current Status Pill */}
                         <div className={`px-2.5 py-1 rounded-full border text-[11px] font-black flex items-center gap-1.5 ${activeConfig.badgePill}`}>
                           <span>{activeConfig.icon}</span>
                           <span>{activeConfig.label}</span>
                         </div>
                       </div>
 
-                      {/* 1-Click Status Selector Bar */}
                       <div className="flex items-center gap-1.5 flex-wrap pt-2 border-t border-slate-800/80">
                         <span className="text-[10px] font-bold text-slate-500 uppercase mr-0.5">Set:</span>
                         
-                        {/* None / Reset */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'none')}
@@ -1086,7 +1115,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           ⚪ Reset (-)
                         </button>
 
-                        {/* Qualified (Q) */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'qualified')}
@@ -1100,7 +1128,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           🟢 Q (Qualify)
                         </button>
 
-                        {/* Semi Final (SF) */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'semi_final')}
@@ -1114,7 +1141,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           🟡 SF (Semi-Final)
                         </button>
 
-                        {/* Final (F) */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'final')}
@@ -1128,7 +1154,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           🔵 F (Final)
                         </button>
 
-                        {/* Champion 👑 */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'champion')}
@@ -1142,7 +1167,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           👑 Winner
                         </button>
 
-                        {/* Eliminated (E) */}
                         <button
                           type="button"
                           onClick={() => handleUpdateTeamStatus(teamObj.id, 'eliminated')}
@@ -1163,7 +1187,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             </div>
           )}
 
-          {/* Tournament Fixtures & Past Matches */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <span className="font-black text-xs uppercase tracking-wider text-slate-300 flex items-center gap-2">
@@ -1251,7 +1274,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         </div>
       )}
 
-      {/* Edit Tournament Modal */}
       {isEditingTournament && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
@@ -1274,7 +1296,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             </div>
 
             <form onSubmit={handleSaveTournamentEdit} className="space-y-4">
-              {/* Banner Photo Upload */}
               <div>
                 <label className="text-xs font-bold text-slate-300 block mb-1.5 flex items-center justify-between">
                   <span>Tournament Photo / Banner</span>
@@ -1414,7 +1435,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           </div>
         </div>
       )}
-      {/* Quick Team IPL Status Selector Modal */}
       {selectedTeamForStatusModal && selectedTournament && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 p-5 sm:p-6 shadow-2xl space-y-4">
@@ -1449,7 +1469,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               </button>
             </div>
 
-            {/* Status Options */}
             <div className="space-y-2">
               <p className="text-xs font-bold text-slate-300">
                 Select Team Status (ਟੀਮ ਦਾ ਸਟੇਟਸ ਚੁਣੋ):
@@ -1513,7 +1532,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         </div>
       )}
 
-      {/* Team Profile Inspection Modal */}
       {inspectedTeam && (
         <TeamProfileModal
           isOpen={Boolean(inspectedTeam)}

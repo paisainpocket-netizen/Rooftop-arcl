@@ -11,27 +11,61 @@ interface ShareMatchCardProps {
 
 export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose, match }) => {
   const [copied, setCopied] = useState(false);
+  // Lets the person choose whether to include the Playing XI/squad lists in
+  // the shared message — defaults to on since sharing squads (whatever size
+  // was actually saved for this match) was the main ask.
+  const [includeSquads, setIncludeSquads] = useState(true);
 
   if (!isOpen) return null;
 
+  // Builds a squad list from whatever players were actually saved as the
+  // playing squad for this match — 5, 7, 11, whatever the real saved count
+  // is. Never assumes or pads to a fixed number.
+  const getSquadNames = (squadIds: string[] | undefined, teamPlayers: typeof match.teamA.players): string[] => {
+    if (!squadIds || squadIds.length === 0) return [];
+    return squadIds
+      .map((id) => teamPlayers.find((p) => p.id === id)?.name)
+      .filter((name): name is string => Boolean(name));
+  };
+
   const generateWhatsAppText = () => {
     const isLive = match.status === 'live';
-    const inn1 = match.innings1;
-    const inn2 = match.innings2;
+    const isCompleted = match.status === 'completed';
+    const inningsOrdinals = ['1st', '2nd', '3rd', '4th'];
 
     let text = `🏏 *ARCL Rooftop Cricket League*\n`;
     text += `🏆 *${match.name}*\n`;
     text += `📍 ${match.venue}\n\n`;
-    text += `📊 *1st Innings*: ${inn1.teamName} ${inn1.totalRuns}/${inn1.totalWickets} (${inn1.oversCompleted}.${inn1.ballsInCurrentOver}/${match.totalOvers} ov)\n`;
 
-    if (match.currentInningsNumber === 2 || match.status === 'completed') {
-      text += `📊 *2nd Innings*: ${inn2.teamName} ${inn2.totalRuns}/${inn2.totalWickets} (${inn2.oversCompleted}.${inn2.ballsInCurrentOver}/${match.totalOvers} ov)\n`;
-    }
+    // Include every innings that has actually been reached — up to 4 for a
+    // Test match, not just the first two. While live, only show innings up
+    // to the current one; once completed, show every innings that exists.
+    ([1, 2, 3, 4] as const).forEach((n) => {
+      const inn = (match as any)[`innings${n}`];
+      if (!inn) return;
+      const reached = isCompleted ? true : n <= match.currentInningsNumber;
+      if (!reached) return;
+      text += `📊 *${inningsOrdinals[n - 1]} Innings*: ${inn.teamName} ${inn.totalRuns}/${inn.totalWickets} (${inn.oversCompleted}.${inn.ballsInCurrentOver}/${match.totalOvers} ov)\n`;
+    });
 
     if (match.result) {
       text += `\n🎉 *Result*: ${match.result.summary}\n`;
     } else if (isLive) {
       text += `\n🔴 *Match Status*: Live in progress!\n`;
+    }
+
+    if (includeSquads) {
+      const squadA = getSquadNames(match.playingSquadA, match.teamA.players);
+      const squadB = getSquadNames(match.playingSquadB, match.teamB.players);
+      if (squadA.length > 0 || squadB.length > 0) {
+        text += `\n👥 *Playing Squads*\n`;
+        if (squadA.length > 0) {
+          text += `*${match.teamA.name}* (${squadA.length}): ${squadA.join(', ')}\n`;
+        }
+        if (squadB.length > 0) {
+          text += `*${match.teamB.name}* (${squadB.length}): ${squadB.join(', ')}\n`;
+        }
+      }
     }
 
     text += `\nScored live on Amritsar Rooftop Cricket League App! 🏏`;
@@ -82,21 +116,20 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
           </div>
 
           <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300 font-sans">{match.innings1.teamName}:</span>
-              <span className="font-black text-emerald-400">
-                {match.innings1.totalRuns}/{match.innings1.totalWickets} ({match.innings1.oversCompleted}.{match.innings1.ballsInCurrentOver} ov)
-              </span>
-            </div>
-
-            {match.currentInningsNumber === 2 && (
-              <div className="flex items-center justify-between">
-                <span className="text-slate-300 font-sans">{match.innings2.teamName}:</span>
-                <span className="font-black text-cyan-400">
-                  {match.innings2.totalRuns}/{match.innings2.totalWickets} ({match.innings2.oversCompleted}.{match.innings2.ballsInCurrentOver} ov)
-                </span>
-              </div>
-            )}
+            {([1, 2, 3, 4] as const).map((n) => {
+              const inn = (match as any)[`innings${n}`];
+              if (!inn) return null;
+              const reached = match.status === 'completed' ? true : n <= match.currentInningsNumber;
+              if (!reached) return null;
+              return (
+                <div key={n} className="flex items-center justify-between">
+                  <span className="text-slate-300 font-sans">{inn.teamName}:</span>
+                  <span className="font-black text-emerald-400">
+                    {inn.totalRuns}/{inn.totalWickets} ({inn.oversCompleted}.{inn.ballsInCurrentOver} ov)
+                  </span>
+                </div>
+              );
+            })}
           </div>
 
           {match.result && (
@@ -105,6 +138,19 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
             </div>
           )}
         </div>
+
+        {/* Include Playing XI toggle */}
+        <label className="flex items-center justify-between p-3 rounded-2xl bg-slate-950 border border-slate-800 cursor-pointer">
+          <span className="text-xs font-bold text-slate-200">
+            👥 Include Playing Squads ({(match.playingSquadA?.length || 0)} + {(match.playingSquadB?.length || 0)} players)
+          </span>
+          <input
+            type="checkbox"
+            checked={includeSquads}
+            onChange={(e) => setIncludeSquads(e.target.checked)}
+            className="w-5 h-5 accent-emerald-500 cursor-pointer"
+          />
+        </label>
 
         {/* Copy Button */}
         <button

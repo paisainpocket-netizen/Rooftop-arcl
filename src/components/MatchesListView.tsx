@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Match, Team, Player } from '../types/cricket';
-import { Plus, Play, Trophy, FileText, Settings, Trash2, Calendar, MapPin, Users, Clock, AlertTriangle, X, Eye, Edit3 } from 'lucide-react';
+import { Plus, Play, Trophy, FileText, Settings, Trash2, Calendar, MapPin, Users, Clock, AlertTriangle, X, Eye, Edit3, ChevronRight } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 
 interface MatchesListViewProps {
@@ -18,6 +18,7 @@ interface MatchesListViewProps {
   isLoadingOlderMatches?: boolean;
   hasMoreOlderMatches?: boolean;
   onEditCompletedMatch?: (match: Match) => void;
+  onOpenTournament?: (tournamentId: string) => void;
   isDarkMode: boolean;
   onOpenLoginModal?: () => void;
 }
@@ -37,6 +38,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   isLoadingOlderMatches = false,
   hasMoreOlderMatches = true,
   onEditCompletedMatch,
+  onOpenTournament,
   isDarkMode,
   onOpenLoginModal,
 }) => {
@@ -46,6 +48,11 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Which match's action menu (Scorecard/Settings/Edit/Delete) is currently
+  // open. Only one card's menu shows at a time — replaces the row of
+  // always-visible icon buttons with a single gear icon per card, so the
+  // card itself stays clean and the actions live in a small popup.
+  const [openActionsForMatchId, setOpenActionsForMatchId] = useState<string | null>(null);
 
   const isUserAdmin = Boolean(
     loggedInPlayer &&
@@ -152,6 +159,24 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
     setMatchToDelete(null);
     setToastMessage(`"${deletedName}" successfully deleted!`);
     setTimeout(() => setToastMessage(null), 3000);
+  };
+
+  // Builds the compact score line for a match card: for a Test match with
+  // multiple innings, shows every reached innings joined with " & " (e.g.
+  // "134-5 & 89-3"); for a limited-overs match, shows the single current
+  // innings with its overs (e.g. "94-4 (6.5)"). Mirrors how a real
+  // scorecard summarizes a multi-innings match in one line.
+  const buildScoreLine = (m: Match, teamId: string): string | null => {
+    const inningsList = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
+      (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId
+    );
+    const reached = inningsList.filter((inn) => (inn.balls?.length || 0) > 0 || m.status === 'completed');
+    if (reached.length === 0) return null;
+    if (reached.length === 1) {
+      const inn = reached[0];
+      return `${inn.totalRuns}-${inn.totalWickets} (${inn.oversCompleted}.${inn.ballsInCurrentOver})`;
+    }
+    return reached.map((inn) => `${inn.totalRuns}-${inn.totalWickets}`).join(' & ');
   };
 
   return (
@@ -262,10 +287,32 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             const isCompleted = m.status === 'completed';
             const isScheduled = m.status === 'setup' || (!isLive && !isCompleted);
 
+            const isUserAdminHere = Boolean(
+              loggedInPlayer &&
+              (loggedInPlayer.profileId === 'ARCL-001')
+            );
+            const isMatchCreator = Boolean(
+              loggedInPlayer &&
+              ((m.creatorId && m.creatorId === loggedInPlayer.id) ||
+               (m.creatorProfileId && m.creatorProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase()) ||
+               isUserAdminHere)
+            );
+            const isDelegatedScorer = Boolean(
+              loggedInPlayer &&
+              m.delegatedScorerProfileId &&
+              (m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase() ||
+               m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.id.toLowerCase())
+            );
+            const canScore = isMatchCreator || isDelegatedScorer || isUserAdminHere;
+            const canUserDelete = isMatchCreator || isUserAdminHere;
+            const scoreLineA = !isScheduled ? buildScoreLine(m, m.teamA.id) : null;
+            const scoreLineB = !isScheduled ? buildScoreLine(m, m.teamB.id) : null;
+            const actionsOpen = openActionsForMatchId === m.id;
+
             return (
               <div
                 key={m.id}
-                className={`p-5 rounded-3xl border shadow-lg transition flex flex-col justify-between relative overflow-hidden ${
+                className={`p-5 rounded-3xl border shadow-lg transition flex flex-col justify-between relative overflow-visible ${
                   isLive
                     ? 'bg-slate-900/90 border-emerald-500/40 ring-1 ring-emerald-500/20'
                     : isScheduled
@@ -275,35 +322,110 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     : 'bg-white border-slate-200 hover:border-slate-300'
                 }`}
               >
-                {/* Header */}
+                {/* Header row: status + format on the left, gear menu on the right */}
                 <div>
-                  <div className="flex items-center justify-between gap-2 mb-2">
-                    <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
-                      isLive
-                        ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 animate-pulse'
-                        : isScheduled
-                        ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono'
-                        : isCompleted
-                        ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
-                        : 'bg-slate-800 text-slate-400'
-                    }`}>
-                      {isLive
-                        ? '🔴 LIVE IN PROGRESS'
-                        : isScheduled
-                        ? '📅 SCHEDULED FIXTURE'
-                        : '🏆 MATCH FINISHED'}
-                    </span>
+                  <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full ${
+                        isLive
+                          ? 'bg-rose-600/20 text-rose-400 border border-rose-500/30 animate-pulse'
+                          : isScheduled
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono'
+                          : isCompleted
+                          ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}>
+                        {isLive ? 'Live' : isScheduled ? 'Scheduled' : 'Completed'}
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        {m.settings?.matchType || 'Match'} ({m.totalOvers} Ov)
+                      </span>
+                    </div>
 
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      {m.settings?.matchType || 'Match'} ({m.totalOvers} Ov)
-                    </span>
+                    {/* Gear menu — every action (Resume/Score, Scorecard,
+                        Edit, Match Settings, Delete) lives behind this one
+                        icon so the card face stays uncluttered. */}
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={() => {
+                          cricketAudio.playClick();
+                          setOpenActionsForMatchId(actionsOpen ? null : m.id);
+                        }}
+                        className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 cursor-pointer transition"
+                        title="Match actions"
+                      >
+                        <Settings className="w-4 h-4" />
+                      </button>
+
+                      {actionsOpen && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-10"
+                            onClick={() => setOpenActionsForMatchId(null)}
+                          />
+                          <div className="absolute right-0 top-full mt-1.5 w-52 rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-20 overflow-hidden py-1.5">
+                            <button
+                              onClick={() => {
+                                setOpenActionsForMatchId(null);
+                                onSelectMatch(m);
+                                cricketAudio.playClick();
+                              }}
+                              className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-100 hover:bg-slate-900 cursor-pointer"
+                            >
+                              {isCompleted ? '👁 View Scorecard' : isScheduled && canScore ? '▶ Start Match' : canScore ? '▶ Resume / Score Match' : '👁 Watch Live'}
+                            </button>
+                            {!isScheduled && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionsForMatchId(null);
+                                  onOpenScorecard(m);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-100 hover:bg-slate-900 cursor-pointer"
+                              >
+                                📄 Scorecard
+                              </button>
+                            )}
+                            {canUserDelete && isCompleted && onEditCompletedMatch && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionsForMatchId(null);
+                                  onEditCompletedMatch(m);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs font-bold text-amber-300 hover:bg-slate-900 cursor-pointer"
+                              >
+                                ✏️ Edit Match (Fix Mistake)
+                              </button>
+                            )}
+                            {canUserDelete && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionsForMatchId(null);
+                                  onOpenMatchSettings(m);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs font-bold text-slate-100 hover:bg-slate-900 cursor-pointer"
+                              >
+                                ⚙️ Match Settings
+                              </button>
+                            )}
+                            {canUserDelete && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionsForMatchId(null);
+                                  cricketAudio.playClick();
+                                  setMatchToDelete(m);
+                                }}
+                                className="w-full text-left px-4 py-2.5 text-xs font-bold text-rose-400 hover:bg-rose-950/40 cursor-pointer border-t border-slate-800 mt-1"
+                              >
+                                🗑 Delete Match
+                              </button>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
-                  <h3 className="font-black text-base text-white">
-                    {m.teamA.name} <span className="text-slate-500 font-sans">vs</span> {m.teamB.name}
-                  </h3>
-
-                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1 flex-wrap">
+                  <div className="flex items-center gap-3 text-[11px] text-slate-400 mb-2 flex-wrap">
                     <span className="flex items-center gap-1">
                       <MapPin className="w-3 h-3 text-emerald-400" />
                       {m.venue || 'Rooftop Arena'}
@@ -312,167 +434,92 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       <Calendar className="w-3 h-3 text-cyan-400" />
                       {m.date || 'Today'}
                     </span>
-                    {m.tournamentName && (
-                      <span className="text-amber-400 text-[10px] font-bold">
-                        🏆 {m.tournamentName}
-                      </span>
-                    )}
                   </div>
 
-                  {/* Scores Summary or Scheduled Fixture Info */}
-                  {isScheduled ? (
-                    <div className="mt-4 p-3.5 rounded-2xl bg-slate-950/90 border border-amber-500/20 space-y-2">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400 font-medium">Match Format:</span>
-                        <span className="font-bold text-amber-300">{m.totalOvers} Overs per side • {m.settings?.playersPerSide || 11} Players</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-slate-400 font-medium">Scheduled Time:</span>
-                        <span className="font-bold text-white flex items-center gap-1">
-                          <Clock className="w-3 h-3 text-cyan-400" />
-                          {m.date || 'Upcoming'}
-                        </span>
-                      </div>
-                      <div className="pt-1.5 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                        <span>👤 Created by: {m.creatorName || m.creatorProfileId || 'User'}</span>
-                        <span className="text-emerald-400 font-bold">Ready to Play</span>
-                      </div>
+                  {/* Team rows with compact score line, matching a
+                      real scorecard's "134-5 & 89-3" style for multi-innings
+                      matches. */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-sm text-white truncate">{m.teamA.name}</span>
+                      {scoreLineA && <span className="font-mono font-black text-sm text-emerald-400 shrink-0">{scoreLineA}</span>}
                     </div>
-                  ) : (
-                    <div className="mt-4 p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
-                      <div className="flex items-center justify-between text-xs font-mono">
-                        <span className="font-bold text-slate-300 font-sans">{m.innings1.teamName}:</span>
-                        <span className="font-black text-emerald-400">
-                          {m.innings1.totalRuns}/{m.innings1.totalWickets} ({m.innings1.oversCompleted}.{m.innings1.ballsInCurrentOver} ov)
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-black text-sm text-white truncate">{m.teamB.name}</span>
+                      {scoreLineB && <span className="font-mono font-black text-sm text-cyan-400 shrink-0">{scoreLineB}</span>}
+                    </div>
+                  </div>
 
-                      {m.currentInningsNumber === 2 && (
-                        <div className="flex items-center justify-between text-xs font-mono pt-1.5 border-t border-slate-800/80">
-                          <span className="font-bold text-slate-300 font-sans">{m.innings2.teamName}:</span>
-                          <span className="font-black text-cyan-400">
-                            {m.innings2.totalRuns}/{m.innings2.totalWickets} ({m.innings2.oversCompleted}.{m.innings2.ballsInCurrentOver} ov)
-                          </span>
-                        </div>
+                  {isScheduled && (
+                    <div className="mt-3 p-3 rounded-2xl bg-slate-950/90 border border-amber-500/20 flex items-center justify-between text-xs">
+                      <span className="text-slate-400 font-medium">
+                        {m.totalOvers} Overs • {m.settings?.playersPerSide || 11} Players
+                      </span>
+                      <span className="font-bold text-white flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-cyan-400" />
+                        {m.date || 'Upcoming'}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tournament link + winner/status line, mirroring how a
+                      real scorecard summarizes the match under the score. */}
+                  {(m.tournamentId || m.result) && (
+                    <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between gap-2 text-[11px]">
+                      {m.tournamentId ? (
+                        <button
+                          onClick={() => onOpenTournament && onOpenTournament(m.tournamentId!)}
+                          className="text-emerald-400 font-bold hover:underline cursor-pointer flex items-center gap-0.5"
+                        >
+                          View Tournament
+                          <ChevronRight className="w-3 h-3" />
+                        </button>
+                      ) : (
+                        <span />
                       )}
-
                       {m.result && (
-                        <div className="pt-1.5 border-t border-slate-800 text-[11px] text-emerald-400 font-black">
-                          🏆 {m.result.summary}
-                        </div>
+                        <span className="font-black text-white text-right">{m.result.summary}</span>
                       )}
+                    </div>
+                  )}
 
-                      {/* Creator & Delegated Scorer Info */}
-                      <div className="pt-1.5 border-t border-slate-800/60 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-                        <span>👤 {m.creatorName || m.creatorProfileId ? `By ${m.creatorName || m.creatorProfileId}` : 'Public Match'}</span>
-                        {m.delegatedScorerProfileId && (
-                          <span className="text-amber-400 font-bold">🔋 Scorer: {m.delegatedScorerName || m.delegatedScorerProfileId}</span>
-                        )}
-                      </div>
+                  {!isScheduled && (m.creatorName || m.creatorProfileId) && (
+                    <div className="mt-1.5 text-[10px] text-slate-500 font-mono">
+                      👤 By {m.creatorName || m.creatorProfileId}
+                      {m.delegatedScorerProfileId && (
+                        <span className="text-amber-400 font-bold ml-2">🔋 Scorer: {m.delegatedScorerName || m.delegatedScorerProfileId}</span>
+                      )}
                     </div>
                   )}
                 </div>
 
-                {/* Card Actions */}
-                {(() => {
-                  const isUserAdmin = Boolean(
-                    loggedInPlayer &&
-                    (loggedInPlayer.profileId === 'ARCL-001')
-                  );
-                  const isMatchCreator = Boolean(
-                    loggedInPlayer &&
-                    ((m.creatorId && m.creatorId === loggedInPlayer.id) ||
-                     (m.creatorProfileId && m.creatorProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase()) ||
-                     isUserAdmin)
-                  );
-                  const isDelegatedScorer = Boolean(
-                    loggedInPlayer &&
-                    m.delegatedScorerProfileId &&
-                    (m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase() ||
-                     m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.id.toLowerCase())
-                  );
-                  const canScore = isMatchCreator || isDelegatedScorer || isUserAdmin;
-                  const canUserDelete = isMatchCreator || isUserAdmin;
-
-                  return (
-                    <div className="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        {!isScheduled && (
-                          <button
-                            onClick={() => onOpenScorecard(m)}
-                            className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition"
-                          >
-                            <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Scorecard</span>
-                          </button>
-                        )}
-                        {canUserDelete && (
-                          <button
-                            onClick={() => onOpenMatchSettings(m)}
-                            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs cursor-pointer transition"
-                            title="Match Settings (Creator Only)"
-                          >
-                            <Settings className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {canUserDelete && (
-                          <button
-                            onClick={() => {
-                              cricketAudio.playClick();
-                              setMatchToDelete(m);
-                            }}
-                            className="p-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 hover:text-rose-200 text-xs cursor-pointer transition"
-                            title="Delete Match (Creator / Admin Only)"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {canUserDelete && isCompleted && onEditCompletedMatch && (
-                          <button
-                            onClick={() => {
-                              cricketAudio.playClick();
-                              onEditCompletedMatch(m);
-                            }}
-                            className="px-2.5 py-1.5 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-800/50 text-amber-400 hover:text-amber-200 text-xs font-bold flex items-center gap-1 cursor-pointer transition"
-                            title="Fix a scoring mistake (Creator / Admin Only)"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                            <span>Edit</span>
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => {
-                            onSelectMatch(m);
-                            cricketAudio.playClick();
-                          }}
-                          className={`px-3.5 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-md transition cursor-pointer active:scale-95 ${
-                            isScheduled && canScore
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30 ring-2 ring-emerald-400/40'
-                              : canScore
-                              ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
-                              : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/30'
-                          }`}
-                        >
-                          <Play className="w-3.5 h-3.5 fill-current" />
-                          <span>
-                            {isCompleted
-                              ? 'View Scorecard'
-                              : isScheduled && canScore
-                              ? '▶ Start Match'
-                              : isScheduled
-                              ? 'View Fixture'
-                              : canScore
-                              ? 'Score Match'
-                              : 'Watch Live'}
-                          </span>
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
+                {/* Primary CTA — the only always-visible action button */}
+                <div className="mt-4 pt-3 border-t border-slate-800/80">
+                  <button
+                    onClick={() => {
+                      onSelectMatch(m);
+                      cricketAudio.playClick();
+                    }}
+                    className={`w-full py-2 rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-md transition cursor-pointer active:scale-95 ${
+                      canScore
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/30'
+                        : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-600/30'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>
+                      {isCompleted
+                        ? 'View Scorecard'
+                        : isScheduled && canScore
+                        ? '▶ Start Match'
+                        : isScheduled
+                        ? 'View Fixture'
+                        : canScore
+                        ? 'Score Match'
+                        : 'Watch Live'}
+                    </span>
+                  </button>
+                </div>
               </div>
             );
           })

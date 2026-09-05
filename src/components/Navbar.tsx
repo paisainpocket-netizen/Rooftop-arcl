@@ -271,11 +271,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <h3 className="font-black text-base text-white tracking-tight">
                       {loggedInPlayerName || 'ARCL Player'}
                     </h3>
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                        {loggedInPlayerProfileId ? `ID: ${loggedInPlayerProfileId}` : 'Free Account'}
-                      </span>
-                    </div>
+                    {loggedInPlayerProfileId && (
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          ID: {loggedInPlayerProfileId}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -402,4 +404,3 @@ export const Navbar: React.FC<NavbarProps> = ({
     </>
   );
 };
-
