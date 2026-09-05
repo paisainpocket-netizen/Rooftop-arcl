@@ -31,6 +31,7 @@ export interface TournamentPlayerStat {
   runsConceded: number;
   wickets: number;
   maidens: number;
+  dots: number;
   bestBowlingWickets: number;
   bestBowlingRuns: number;
   economy: number;
@@ -73,6 +74,7 @@ function emptyStat(playerId: string, playerName: string, teamId: string, teamNam
     runsConceded: 0,
     wickets: 0,
     maidens: 0,
+    dots: 0,
     bestBowlingWickets: 0,
     bestBowlingRuns: 0,
     economy: 0,
@@ -182,6 +184,7 @@ export function calculateTournamentStats(tournamentMatches: Match[]): Tournament
         entry.runsConceded += bowl.runs || 0;
         entry.wickets += bowl.wickets || 0;
         entry.maidens += bowl.maidens || 0;
+        entry.dots += bowl.dots || 0;
         if (bowl.wickets >= 3) entry.threeWicketHauls += 1;
         const isBetterSpell =
           bowl.wickets > entry.bestBowlingWickets ||
