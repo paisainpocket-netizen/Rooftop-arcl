@@ -430,8 +430,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         // opposing team (whichever side of teamA/teamB isn't the batting
         // team) is credited with conceding it — this works the same way
         // regardless of how many innings the match format has.
-        const teamAId = m.teamA?.id;
-        const teamBId = m.teamB?.id;
+        // (teamAId/teamBId are already declared above for the W/L/T tally.)
         ([m.innings1, m.innings2, m.innings3, m.innings4] as const).forEach((inn) => {
           if (!inn) return;
           const battingTeamId = inn.teamId;
