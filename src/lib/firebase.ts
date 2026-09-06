@@ -268,6 +268,21 @@ export const cloudDb = {
    * written), independent of what happens to the main document. This means
    * ball-by-ball history is never lost even in the rare case the main
    * document has to be trimmed below for size reasons.
+   *
+   * BUG FIX: previously, if the local ball count ever SHRANK (the only way
+   * that happens is an Undo), this function only ever looked at balls from
+   * `prevCount` onward to mirror NEW ones — it never deleted the leftover
+   * subcollection doc(s) from before the undo. Those orphaned docs stayed
+   * in Firestore forever, and the very next time the live
+   * `subscribeToMatchBalls` listener fired (elsewhere, in App.tsx), it saw
+   * that stale HIGHER ball count and — trusting its own "only accept an
+   * increase" merge rule, designed to stop the active scorer's own taps
+   * from flickering — restored the undone ball right back into the match.
+   * That's exactly why an Undo looked correct for a moment and then
+   * silently reverted a little while later. Now, whenever the local count
+   * is lower than what we last saved, the extra doc(s) are explicitly
+   * deleted from the subcollection too, so there's nothing stale left for
+   * that listener to "helpfully" resurrect.
    */
   async saveMatch(match: Match): Promise<void> {
     if (!match || !match.id) return;
@@ -285,11 +300,14 @@ export const cloudDb = {
         pendingMatchSaves.delete(match.id);
         try {
           // 1) Mirror any NEW balls (since our last save of this match) into
-          // the `balls` subcollection. Doc id is deterministic
-          // (`${inningsKey}_${index}`) so this is safe to re-run/overlap.
+          // the `balls` subcollection, and DELETE any leftover ball doc(s)
+          // if the local array got shorter (an Undo). Doc id is
+          // deterministic (`${inningsKey}_${index}`) so both directions are
+          // safe to re-run/overlap.
           const savedCounts = lastSavedBallCounts.get(match.id) || {};
           const newSavedCounts: Record<string, number> = { ...savedCounts };
           const ballWrites: { ref: any; data: any }[] = [];
+          const ballDeletes: any[] = [];
           for (const key of INNINGS_KEYS) {
             const innings = (match as any)[key];
             if (!innings) continue;
@@ -302,11 +320,23 @@ export const cloudDb = {
                 data: sanitizeForFirestore({ ...balls[i], inningsKey: key, ballIndex: i }),
               });
             }
+            // Undo case: local count shrank since our last save — remove
+            // the now-stale doc(s) so no listener can ever see them again.
+            if (balls.length < prevCount) {
+              for (let i = balls.length; i < prevCount; i++) {
+                ballDeletes.push(doc(db, COLLECTIONS.MATCHES, match.id, 'balls', `${key}_${i}`));
+              }
+            }
             newSavedCounts[key] = balls.length;
           }
           for (let i = 0; i < ballWrites.length; i += 400) {
             const batch = writeBatch(db);
             ballWrites.slice(i, i + 400).forEach(({ ref, data }) => batch.set(ref, data));
+            await batch.commit();
+          }
+          for (let i = 0; i < ballDeletes.length; i += 400) {
+            const batch = writeBatch(db);
+            ballDeletes.slice(i, i + 400).forEach((ref) => batch.delete(ref));
             await batch.commit();
           }
           lastSavedBallCounts.set(match.id, newSavedCounts);
