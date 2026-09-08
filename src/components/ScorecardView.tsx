@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Match, Innings, BallOutcome } from '../types/cricket';
 import { calculateMatchMVP } from '../utils/mvp';
 import { Trophy, FileText, Printer, Award, Sparkles, HelpCircle } from 'lucide-react';
@@ -46,6 +46,158 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
   const handlePrint = () => {
     window.print();
   };
+
+  // Reusable innings-tab selector — now rendered for BOTH the "Full
+  // Scorecard" and "Ball by Ball" subtabs (previously it only existed
+  // inside the Scorecard subtab's markup, so switching to Ball by Ball
+  // silently lost the ability to pick which innings to look at and always
+  // showed whichever one was last selected — usually just the 1st).
+  const InningsTabSelector = () => (
+    <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
+      <button
+        onClick={() => setActiveInningsTab(1)}
+        className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
+          activeInningsTab === 1
+            ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
+            : 'text-slate-400 hover:text-white'
+        }`}
+      >
+        <span>1st Inn ({battingTeam1.name})</span>
+        <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
+          {match.innings1.totalRuns}/{match.innings1.totalWickets} ({match.innings1.oversCompleted}.{match.innings1.ballsInCurrentOver})
+        </span>
+      </button>
+
+      <button
+        onClick={() => setActiveInningsTab(2)}
+        className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
+          activeInningsTab === 2
+            ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
+            : 'text-slate-400 hover:text-white'
+        }`}
+      >
+        <span>2nd Inn ({bowlingTeam1.name})</span>
+        <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
+          {match.innings2.totalRuns}/{match.innings2.totalWickets} ({match.innings2.oversCompleted}.{match.innings2.ballsInCurrentOver})
+        </span>
+      </button>
+
+      {match.innings3 && (
+        <button
+          onClick={() => setActiveInningsTab(3)}
+          className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
+            activeInningsTab === 3
+              ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <span>3rd Inn (Test)</span>
+          <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
+            {match.innings3.totalRuns}/{match.innings3.totalWickets}
+          </span>
+        </button>
+      )}
+
+      {match.innings4 && (
+        <button
+          onClick={() => setActiveInningsTab(4)}
+          className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
+            activeInningsTab === 4
+              ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <span>4th Inn (Test)</span>
+          <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
+            {match.innings4.totalRuns}/{match.innings4.totalWickets}
+          </span>
+        </button>
+      )}
+    </div>
+  );
+
+  // Per-over grouping + over-end snapshot for the currently selected
+  // innings' Ball by Ball view — same approach used in the live scorer, so
+  // this "Full Scorecard" view shows the same rich per-over recap (dots +
+  // both batsmen's score at that point + bowler figure + running total)
+  // instead of a flat undifferentiated list of every single delivery.
+  const overGroupsForBalls = useMemo(() => {
+    const groups = new Map<number, typeof currentTabInnings.balls>();
+    currentTabInnings.balls.forEach((b) => {
+      const key = b.overNumber;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(b);
+    });
+    return groups;
+  }, [currentTabInnings.balls]);
+
+  const overEndSnapshotsForBalls = useMemo(() => {
+    const snapshots = new Map<number, {
+      strikerName: string; strikerRuns: number; strikerBalls: number;
+      nonStrikerName: string; nonStrikerRuns: number; nonStrikerBalls: number;
+      bowlerName: string; bowlerFigure: string;
+      teamOvers: number; teamRuns: number; teamWickets: number;
+    }>();
+
+    const batRuns: Record<string, number> = {};
+    const batBalls: Record<string, number> = {};
+    const bowlLegalBalls: Record<string, number> = {};
+    const bowlRuns: Record<string, number> = {};
+    const bowlWickets: Record<string, number> = {};
+    const bowlMaidens: Record<string, number> = {};
+
+    let teamLegalBalls = 0;
+    let teamRuns = 0;
+    let teamWickets = 0;
+    let legalBallsSinceOverStart = 0;
+    let runsThisOverForBowler = 0;
+
+    currentTabInnings.balls.forEach((b) => {
+      batRuns[b.strikerId] = (batRuns[b.strikerId] || 0) + b.runsBat;
+      batBalls[b.strikerId] = (batBalls[b.strikerId] || 0) + (b.extraType === 'wide' ? 0 : 1);
+
+      const bowlerRunsAdded = (b.extraType === 'bye' || b.extraType === 'legBye') ? 0 : (b.runsBat + b.extraRuns);
+      bowlRuns[b.bowlerId] = (bowlRuns[b.bowlerId] || 0) + bowlerRunsAdded;
+      runsThisOverForBowler += bowlerRunsAdded;
+      if (b.isWicket && !['runout', 'timed_out', 'retired'].includes(b.wicketType || '')) {
+        bowlWickets[b.bowlerId] = (bowlWickets[b.bowlerId] || 0) + 1;
+      }
+
+      teamRuns += b.runsBat + b.extraRuns;
+      if (b.isWicket) teamWickets += 1;
+
+      if (b.isLegalDelivery) {
+        teamLegalBalls += 1;
+        bowlLegalBalls[b.bowlerId] = (bowlLegalBalls[b.bowlerId] || 0) + 1;
+        legalBallsSinceOverStart += 1;
+
+        if (legalBallsSinceOverStart === 6) {
+          if (runsThisOverForBowler === 0) {
+            bowlMaidens[b.bowlerId] = (bowlMaidens[b.bowlerId] || 0) + 1;
+          }
+          const bOvers = Math.floor((bowlLegalBalls[b.bowlerId] || 0) / 6);
+          const bBalls = (bowlLegalBalls[b.bowlerId] || 0) % 6;
+          snapshots.set(b.overNumber, {
+            strikerName: b.strikerName,
+            strikerRuns: batRuns[b.strikerId] || 0,
+            strikerBalls: batBalls[b.strikerId] || 0,
+            nonStrikerName: b.nonStrikerName,
+            nonStrikerRuns: batRuns[b.nonStrikerId] || 0,
+            nonStrikerBalls: batBalls[b.nonStrikerId] || 0,
+            bowlerName: b.bowlerName,
+            bowlerFigure: `${bOvers}.${bBalls}-${bowlMaidens[b.bowlerId] || 0}-${bowlRuns[b.bowlerId] || 0}-${bowlWickets[b.bowlerId] || 0}`,
+            teamOvers: Math.floor(teamLegalBalls / 6),
+            teamRuns,
+            teamWickets,
+          });
+          legalBallsSinceOverStart = 0;
+          runsThisOverForBowler = 0;
+        }
+      }
+    });
+
+    return snapshots;
+  }, [currentTabInnings.balls]);
 
   return (
     <div className="space-y-6 text-slate-100 font-sans">
@@ -164,67 +316,7 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
       {selectedSubTab === 'scorecard' && (
         <div className="space-y-6">
           {/* Innings Tabs */}
-          <div className="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-2xl border border-slate-800">
-            <button
-              onClick={() => setActiveInningsTab(1)}
-              className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
-                activeInningsTab === 1
-                  ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>1st Inn ({battingTeam1.name})</span>
-              <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
-                {match.innings1.totalRuns}/{match.innings1.totalWickets} ({match.innings1.oversCompleted}.{match.innings1.ballsInCurrentOver})
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveInningsTab(2)}
-              className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
-                activeInningsTab === 2
-                  ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>2nd Inn ({bowlingTeam1.name})</span>
-              <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
-                {match.innings2.totalRuns}/{match.innings2.totalWickets} ({match.innings2.oversCompleted}.{match.innings2.ballsInCurrentOver})
-              </span>
-            </button>
-
-            {match.innings3 && (
-              <button
-                onClick={() => setActiveInningsTab(3)}
-                className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
-                  activeInningsTab === 3
-                    ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>3rd Inn (Test)</span>
-                <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
-                  {match.innings3.totalRuns}/{match.innings3.totalWickets}
-                </span>
-              </button>
-            )}
-
-            {match.innings4 && (
-              <button
-                onClick={() => setActiveInningsTab(4)}
-                className={`flex-1 min-w-[120px] py-2 rounded-xl text-xs font-black transition cursor-pointer flex items-center justify-center gap-2 ${
-                  activeInningsTab === 4
-                    ? 'bg-slate-800 text-emerald-400 border border-emerald-500/40'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <span>4th Inn (Test)</span>
-                <span className="font-mono bg-slate-900 px-2 py-0.5 rounded text-[11px] text-white">
-                  {match.innings4.totalRuns}/{match.innings4.totalWickets}
-                </span>
-              </button>
-            )}
-          </div>
+          <InningsTabSelector />
 
           {/* Innings Summary Bar */}
           <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-wrap items-center justify-between gap-4">
@@ -496,6 +588,11 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
       {/* SUBTAB 3: BALL BY BALL */}
       {selectedSubTab === 'balls' && (
         <div className="space-y-4">
+          {/* Innings Tabs — now available here too, so any innings' ball
+              history (not just whichever was last picked in the Scorecard
+              subtab) can be reviewed. */}
+          <InningsTabSelector />
+
           <div className="flex items-center justify-between">
             <h3 className="font-black text-base text-white">Ball by Ball History</h3>
             <span className="text-xs text-slate-400 font-mono">
@@ -503,50 +600,116 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
             </span>
           </div>
 
-          <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+          <div className="space-y-3 max-h-[32rem] overflow-y-auto pr-1">
             {currentTabInnings.balls.length === 0 ? (
               <p className="text-center text-slate-500 italic py-6">No deliveries in this innings yet.</p>
             ) : (
-              [...currentTabInnings.balls].reverse().map((b) => (
-                <div
-                  key={b.id}
-                  onClick={() => setSelectedBallDetail(b)}
-                  className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
-                    b.isWicket
-                      ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
-                      : b.isSix
-                      ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
-                      : b.isFour
-                      ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
-                      : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
-                  }`}
-                >
-                  <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
-                      {b.displayOver}
-                    </span>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
-                        {b.isWicket && (
-                          <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
-                            Wicket
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
-                    </div>
-                  </div>
+              (() => {
+                const sortedOverNumbers = Array.from(overGroupsForBalls.keys()).sort((a, b) => b - a);
+                return sortedOverNumbers.map((overNum) => {
+                  const ballsInOver = overGroupsForBalls.get(overNum)!;
+                  const snap = overEndSnapshotsForBalls.get(overNum);
 
-                  <div className="text-right">
-                    <span className={`text-base font-black font-mono ${
-                      b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
-                    }`}>
-                      {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.runsBat}
-                    </span>
-                  </div>
-                </div>
-              ))
+                  return (
+                    <div key={overNum} className="space-y-1.5">
+                      {[...ballsInOver].reverse().map((b) => (
+                        <div
+                          key={b.id}
+                          onClick={() => setSelectedBallDetail(b)}
+                          className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
+                            b.isWicket
+                              ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
+                              : b.isSix
+                              ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
+                              : b.isFour
+                              ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
+                              : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
+                              {b.displayOver}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
+                                {b.isWicket && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
+                                    Wicket
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className={`text-base font-black font-mono ${
+                              b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
+                            }`}>
+                              {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.extraType === 'bye' ? `${b.extraRuns}b` : b.extraType === 'legBye' ? `${b.extraRuns}lb` : b.runsBat}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {/* Over-end summary card — only for an over that
+                          fully completed (6 legal balls), showing the score
+                          exactly as it stood at that moment (not the
+                          innings' final numbers). */}
+                      {snap && (
+                        <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-3 space-y-2">
+                          <div className="flex flex-wrap gap-1.5">
+                            {ballsInOver.map((b) => (
+                              <span
+                                key={b.id}
+                                className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-mono font-black ${
+                                  b.isWicket
+                                    ? 'bg-rose-600 text-white'
+                                    : b.isSix
+                                    ? 'bg-purple-600 text-white'
+                                    : b.isFour
+                                    ? 'bg-blue-600 text-white'
+                                    : b.extraType !== 'none'
+                                    ? 'bg-transparent border border-slate-500 text-slate-300'
+                                    : 'bg-slate-700 text-slate-200'
+                                }`}
+                              >
+                                {b.isWicket
+                                  ? 'W'
+                                  : b.extraType === 'wide'
+                                  ? 'Wd'
+                                  : b.extraType === 'noBall'
+                                  ? 'Nb'
+                                  : b.extraType === 'bye'
+                                  ? 'B'
+                                  : b.extraType === 'legBye'
+                                  ? 'Lb'
+                                  : b.runsBat}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-slate-800 pt-2">
+                            <span className="text-slate-200 font-bold truncate">
+                              {snap.strikerName} <span className="text-slate-400 font-mono">{snap.strikerRuns}({snap.strikerBalls})</span>
+                            </span>
+                            <span className="text-slate-200 font-bold truncate text-right">{snap.bowlerName}</span>
+                            <span className="text-slate-200 font-bold truncate">
+                              {snap.nonStrikerName} <span className="text-slate-400 font-mono">{snap.nonStrikerRuns}({snap.nonStrikerBalls})</span>
+                            </span>
+                            <span className="text-slate-400 font-mono text-right">{snap.bowlerFigure}</span>
+                          </div>
+                          <div className="flex items-center justify-between border-t border-slate-800 pt-2 text-[11px] font-black">
+                            <span className="text-emerald-400">Overs {snap.teamOvers}</span>
+                            <span className="text-emerald-400">Runs {snap.teamRuns}</span>
+                            <span className="text-emerald-400">Score {snap.teamRuns}-{snap.teamWickets}</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                });
+              })()
             )}
           </div>
         </div>
