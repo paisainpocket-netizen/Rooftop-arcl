@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect, useRef } from 'react';
 import { Match, Tournament, Team, Player } from '../types/cricket';
 import { 
   Play, Trophy, Sparkles, Plus, Eye, Radio, Flame, 
@@ -84,6 +84,82 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
     loggedInPlayer &&
     (loggedInPlayer.profileId === 'ARCL-001')
   );
+
+  // Auto-play a ball-event sound for EVERYONE watching this live feed —
+  // not just the person scoring. `liveMatches` is Firebase-synced, so any
+  // ball the scorer records reaches every viewer's `matches` prop; this
+  // effect watches each live match's ball count and, whenever it grows,
+  // plays the matching sound for whatever just happened (wicket / six /
+  // four / regular delivery). A ref (not state) tracks the last-seen count
+  // per match so re-renders don't replay old sounds — and the first time a
+  // match is seen its count is just recorded (no sound), so opening the
+  // feed mid-match doesn't fire off every ball that already happened.
+  const previousBallCountsRef = useRef<Record<string, number>>({});
+
+  useEffect(() => {
+    liveMatches.forEach((m) => {
+      const currentInnNum = m.currentInningsNumber || 1;
+      const currentInn = currentInnNum === 1 ? m.innings1 : m.innings2;
+      if (!currentInn) return;
+
+      const balls = currentInn.balls || [];
+      const newCount = balls.length;
+      const prevCount = previousBallCountsRef.current[m.id];
+
+      if (prevCount !== undefined && newCount > prevCount) {
+        const latestBall = balls[balls.length - 1];
+        if (latestBall) {
+          // Sound effect first (unchanged from before)
+          if (latestBall.isWicket) {
+            cricketAudio.playWicket();
+          } else if (latestBall.isSix || latestBall.runsBat === 6) {
+            cricketAudio.playSix();
+          } else if (latestBall.isFour || latestBall.runsBat === 4) {
+            cricketAudio.playFour();
+          } else if (latestBall.extraType === 'none') {
+            cricketAudio.playBatHit();
+          }
+
+          // Spoken commentary — same announceBallEvent() the scorer's own
+          // device uses, so every viewer hears the same style of call
+          // (Punjabi by default, or whatever language they've personally
+          // set on their own device via cricketAudio.setCommentaryLanguage).
+          let eventType:
+            | 'dot' | 'single' | 'two' | 'three' | 'four' | 'six'
+            | 'wicket' | 'wide' | 'noball' = 'dot';
+
+          if (latestBall.isWicket) {
+            eventType = 'wicket';
+          } else if (latestBall.extraType === 'wide') {
+            eventType = 'wide';
+          } else if (latestBall.extraType === 'noBall') {
+            eventType = 'noball';
+          } else if (latestBall.runsBat === 6) {
+            eventType = 'six';
+          } else if (latestBall.runsBat === 4) {
+            eventType = 'four';
+          } else if (latestBall.runsBat === 3) {
+            eventType = 'three';
+          } else if (latestBall.runsBat === 2) {
+            eventType = 'two';
+          } else if (latestBall.runsBat === 1) {
+            eventType = 'single';
+          } else {
+            eventType = 'dot';
+          }
+
+          cricketAudio.announceBallEvent({
+            eventType,
+            batterName: latestBall.strikerName || 'Batsman',
+            bowlerName: latestBall.bowlerName,
+            runs: latestBall.runsBat,
+          });
+        }
+      }
+
+      previousBallCountsRef.current[m.id] = newCount;
+    });
+  }, [liveMatches]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-200">
