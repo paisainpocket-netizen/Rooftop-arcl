@@ -308,6 +308,12 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             const scoreLineA = !isScheduled ? buildScoreLine(m, m.teamA.id) : null;
             const scoreLineB = !isScheduled ? buildScoreLine(m, m.teamB.id) : null;
             const actionsOpen = openActionsForMatchId === m.id;
+            // Whatever the person picked/typed when creating this match —
+            // the tournament name if one was selected, otherwise the
+            // match's own name (e.g. a friendly's custom title). Nothing
+            // new is invented here; if neither field was set, no strip
+            // renders for that card.
+            const cardTitle = m.tournamentName || m.name || null;
 
             return (
               <div
@@ -322,6 +328,17 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     : 'bg-white border-slate-200 hover:border-slate-300'
                 }`}
               >
+                {/* Gold title strip — shows the tournament name if this
+                    match belongs to one, otherwise the match's own custom
+                    name. Sits above everything else on the card, same
+                    place the old gold banner used to live. */}
+                {cardTitle && (
+                  <div className="-mx-5 -mt-5 mb-3 px-5 py-2 rounded-t-3xl bg-gradient-to-r from-amber-500/20 via-amber-400/10 to-transparent border-b border-amber-500/30 flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <span className="text-xs font-black text-amber-300 truncate">{cardTitle}</span>
+                  </div>
+                )}
+
                 {/* Header row: status + format on the left, gear menu on the right */}
                 <div>
                   <div className="flex items-start justify-between gap-2 mb-2">
