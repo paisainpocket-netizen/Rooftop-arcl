@@ -612,51 +612,15 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
 
                   return (
                     <div key={overNum} className="space-y-1.5">
-                      {[...ballsInOver].reverse().map((b) => (
-                        <div
-                          key={b.id}
-                          onClick={() => setSelectedBallDetail(b)}
-                          className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
-                            b.isWicket
-                              ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
-                              : b.isSix
-                              ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
-                              : b.isFour
-                              ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
-                              : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
-                              {b.displayOver}
-                            </span>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
-                                {b.isWicket && (
-                                  <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
-                                    Wicket
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className={`text-base font-black font-mono ${
-                              b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
-                            }`}>
-                              {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.extraType === 'bye' ? `${b.extraRuns}b` : b.extraType === 'legBye' ? `${b.extraRuns}lb` : b.runsBat}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {/* Over-end summary card — only for an over that
-                          fully completed (6 legal balls), showing the score
-                          exactly as it stood at that moment (not the
-                          innings' final numbers). */}
+                      {/* Over-end summary card — moved ABOVE the balls list.
+                          It only renders for an over that fully completed
+                          (6 legal balls), showing the score exactly as it
+                          stood at that moment (not the innings' final
+                          numbers). Rendering it first means it sits right
+                          after the previous over's oldest ball and right
+                          before this over's own balls (6.. down to .1) —
+                          matching how the live scorer / reference app
+                          shows it. */}
                       {snap && (
                         <div className="rounded-2xl bg-slate-900/60 border border-slate-800 p-3 space-y-2">
                           <div className="flex flex-wrap gap-1.5">
@@ -706,6 +670,47 @@ export const ScorecardView: React.FC<ScorecardViewProps> = ({ match, onClose }) 
                           </div>
                         </div>
                       )}
+
+                      {[...ballsInOver].reverse().map((b) => (
+                        <div
+                          key={b.id}
+                          onClick={() => setSelectedBallDetail(b)}
+                          className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
+                            b.isWicket
+                              ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
+                              : b.isSix
+                              ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
+                              : b.isFour
+                              ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
+                              : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
+                              {b.displayOver}
+                            </span>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
+                                {b.isWicket && (
+                                  <span className="px-1.5 py-0.2 rounded bg-rose-600 text-white font-black text-[9px] uppercase">
+                                    Wicket
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-400 max-w-md">{b.commentary}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right">
+                            <span className={`text-base font-black font-mono ${
+                              b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
+                            }`}>
+                              {b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.extraType === 'bye' ? `${b.extraRuns}b` : b.extraType === 'legBye' ? `${b.extraRuns}lb` : b.runsBat}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   );
                 });
