@@ -7,8 +7,7 @@ interface CreateMatchModalProps {
   isOpen: boolean;
   onClose: () => void;
   teams: Team[];
-  allTeams?: Team[]; // Full/global team list — used only for the explicit
-  // "search opponent by Team ID" lookup below, never for the default dropdown.
+  allTeams?: Team[];
   tournaments: Tournament[];
   initialTournamentId?: string;
   onOpenCreateTeam: () => void;
@@ -47,7 +46,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [scorerName, setScorerName] = useState('');
   const [clubSeason, setClubSeason] = useState('2026');
 
-  // Format, Overs, Players per side & Wickets state
   const [selectedFormat, setSelectedFormat] = useState<'T10' | 'T20' | 'Club' | '100' | 'One Day' | 'Test Match' | 'Custom'>('T10');
   const [totalOvers, setTotalOvers] = useState<number>(7);
   const [oversInput, setOversInput] = useState<string>('7');
@@ -60,10 +58,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const [showFormatModal, setShowFormatModal] = useState(false);
 
-  // Custom Squads for Match (Any size 2 to 11+)
-  // Look up in the FULL team pool (allTeams) when available, so a team picked
-  // via "Search by Team ID" (which may not be one of the user's own teams)
-  // still resolves correctly — not just the user's own restricted `teams` list.
   const teamLookupPool = allTeams && allTeams.length > 0 ? allTeams : teams;
   const blankTeamPlaceholder: Team = {
     id: '',
@@ -85,10 +79,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [keeperA, setKeeperA] = useState<string>('');
   const [keeperB, setKeeperB] = useState<string>('');
 
-  // Team Squad Picker Modal inside Match Setup
   const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
 
-  // Initialize squad defaults when team or playersPerSide changes
   React.useEffect(() => {
     if (teamA) {
       const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id);
@@ -109,7 +101,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     }
   }, [teamBId, teamB, playersPerSide]);
 
-  // Toss State & Modal
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinnerId, setTossWinnerId] = useState<string>('');
   const [tossDecision, setTossDecision] = useState<'bat' | 'bowl'>('bat');
@@ -122,9 +113,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const selectedTour = tournaments.find((t) => t.id === selectedTournamentId);
 
-  // "Search opponent by Team ID" — lets a user find and add ANY team (their
-  // own or someone else's) by its exact Team ID or name, without ever
-  // browsing every user's teams in a big list.
   const opponentSearchResults = (() => {
     const q = opponentSearchQuery.trim().toLowerCase();
     if (q.length < 2) return [];
@@ -192,7 +180,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const clamped = Math.max(2, Math.min(25, val));
     setPlayersPerSide(clamped);
     setPlayersPerSideInput(String(clamped));
-    // Default wickets to clamped - 1 (e.g. 11 players = 10 wickets, 8 players = 7 wickets, 6 players = 5 wickets)
     const suggestedWickets = Math.max(1, clamped - 1);
     setTotalWickets(suggestedWickets);
     setWicketsInput(String(suggestedWickets));
@@ -215,11 +202,32 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const constructMatchObject = (status: 'scheduled' | 'live'): Match => {
     const isTest = selectedFormat === 'Test Match';
-    const effectiveTossWinnerId = tossWinnerId || teamA.id;
 
-    const initialBattingTeam = effectiveTossWinnerId === teamA.id
-      ? (tossDecision === 'bat' ? teamA : teamB)
-      : (tossDecision === 'bat' ? teamB : teamA);
+    // A "Save Fixture" (status === 'scheduled') is deliberately saved
+    // WITHOUT a decided toss — the toss is asked for later, in App.tsx's
+    // dedicated pendingTossMatch step, the single moment the fixture is
+    // actually opened to start play. Previously this function silently
+    // defaulted tossWinnerId to Team A here even for a fixture (nobody
+    // had picked a toss winner yet), baking a fake "Team A won the toss
+    // and chose to bat" result into innings1/2/3/4's teamId assignments.
+    // That fake result WAS correctly overwritten later when the fixture
+    // was opened and the real toss decided — but only if that second step
+    // ran cleanly. Not baking in a fake toss result at all removes that
+    // redundant duplicate-source-of-truth entirely, so there's nothing
+    // stale left for a later step to depend on overwriting correctly.
+    const tossDecided = status === 'live';
+    const effectiveTossWinnerId = tossDecided ? (tossWinnerId || teamA.id) : undefined;
+    const effectiveTossDecision = tossDecided ? tossDecision : undefined;
+
+    // For a fixture with no decided toss yet, Team A/Team B are just
+    // placeholders for which innings object gets which starting XI — the
+    // real batting/bowling assignment happens (and fully overwrites these)
+    // in App.tsx once the toss is actually decided at match-start time.
+    const initialBattingTeam = !tossDecided
+      ? teamA
+      : effectiveTossWinnerId === teamA.id
+      ? (effectiveTossDecision === 'bat' ? teamA : teamB)
+      : (effectiveTossDecision === 'bat' ? teamB : teamA);
 
     const initialBowlingTeam = initialBattingTeam.id === teamA.id ? teamB : teamA;
 
@@ -255,7 +263,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       keeperA: keeperA || teamA.players[3]?.id || teamA.players[0]?.id,
       keeperB: keeperB || teamB.players[3]?.id || teamB.players[0]?.id,
       tossWinnerTeamId: effectiveTossWinnerId,
-      tossDecision,
+      tossDecision: effectiveTossDecision,
       status: status === 'scheduled' ? 'setup' : 'live',
       currentInningsNumber: 1,
       totalOvers,
@@ -400,7 +408,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
       <div className="w-full max-w-md max-h-[94vh] flex flex-col rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 shadow-2xl overflow-hidden">
-        {/* App Bar (Screenshot 4) */}
         <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-slate-950">
           <button
             onClick={onClose}
@@ -421,9 +428,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
           </button>
         </div>
 
-        {/* Scrollable Form Body (Matching Screenshot 4) */}
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
-          {/* Match Stage (only relevant when scheduling within a Tournament) */}
           {selectedTournamentId && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3.5 space-y-2">
               <span className="text-[11px] font-black uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
@@ -451,7 +456,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </div>
           )}
 
-          {/* Two Teams Section */}
           {teams.length === 0 && (
             <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-3.5 text-center">
               <p className="text-xs font-bold text-amber-300">
@@ -463,7 +467,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </div>
           )}
           <div className="grid grid-cols-2 gap-4 text-center py-2">
-            {/* Team A */}
             <div className="flex flex-col items-center">
               <span className="text-[11px] text-slate-400 mb-1.5 font-medium">Select Team</span>
               <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-emerald-500/50 p-1 flex items-center justify-center shadow-lg relative group">
@@ -493,7 +496,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </button>
             </div>
 
-            {/* Team B */}
             <div className="flex flex-col items-center">
               <span className="text-[11px] text-slate-400 mb-1.5 font-medium">Select Team</span>
               <div className="w-20 h-20 rounded-full bg-slate-800 border-2 border-amber-500/50 p-1 flex items-center justify-center shadow-lg relative group">
@@ -524,7 +526,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </div>
           </div>
 
-          {/* Search for an opponent's team by Team ID (not in your own list) */}
           <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3.5 space-y-2">
             <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
               🔍 Looking for another team? Search by Team ID
@@ -586,7 +587,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             )}
           </div>
 
-          {/* Match Title Input */}
           <div>
             <input
               type="text"
@@ -597,7 +597,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             />
           </div>
 
-          {/* Date & Time Row (Screenshot 4) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="relative">
               <input
@@ -617,7 +616,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </div>
           </div>
 
-          {/* Format & Wickets Clickable Card (Screenshot 4) */}
           <div
             onClick={() => setShowFormatModal(true)}
             className="py-3 px-4 rounded-xl bg-slate-950/80 border border-slate-800 text-center cursor-pointer hover:border-emerald-500/50 transition"
@@ -628,7 +626,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             <span className="text-[10px] text-emerald-400 font-bold">Tap to change format, players per side, or overs</span>
           </div>
 
-          {/* Scorer Optional Input */}
           <div>
             <input
               type="text"
@@ -639,13 +636,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             />
           </div>
 
-          {/* Season / Year & Ball Type */}
           <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
             <span className="font-bold">Club Season/Year* - {clubSeason}</span>
             <span className="text-base" title="Tennis Heavy Ball">🎾</span>
           </div>
 
-          {/* Action Buttons (Screenshot 4) */}
           <div className="grid grid-cols-2 gap-3 pt-3">
             <button
               type="button"
@@ -666,7 +661,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         </div>
       </div>
 
-      {/* Format, Players Per Side & Overs Selector Dialog */}
       {showFormatModal && (
         <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
           <div className="w-full max-w-sm max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-4 shadow-2xl text-slate-100">
@@ -680,7 +674,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </button>
             </div>
 
-            {/* Total Overs Selector with Free Backspacing and +/- */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-400 block">Total Overs per Innings</label>
@@ -726,7 +719,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 </div>
               </div>
 
-              {/* Quick Overs Presets */}
               <div className="flex flex-wrap gap-1.5 bg-slate-950 p-2 rounded-xl border border-slate-800">
                 {[2, 3, 5, 6, 7, 8, 10, 12, 15, 20, 25, 50].map((ov) => (
                   <button
@@ -745,7 +737,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </div>
             </div>
 
-            {/* Formats Grid */}
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-400 block">Select Format*</label>
               <div className="grid grid-cols-3 gap-2">
@@ -766,7 +757,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </div>
             </div>
 
-            {/* Players Per Side (Fix for 1 likh hat nhi raha bug) */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-400 block">Players per Side (Team Size)</label>
@@ -815,7 +805,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 </div>
               </div>
 
-              {/* Quick Players Per Side Presets */}
               <div className="flex flex-wrap gap-1.5 bg-slate-950 p-2 rounded-xl border border-slate-800">
                 {[2, 3, 4, 5, 6, 7, 8, 10, 11].map((pCount) => (
                   <button
@@ -834,7 +823,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </div>
             </div>
 
-            {/* Wickets per Team Selector with Free Backspacing */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-400 block">Wickets per Team</label>
@@ -884,7 +872,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             <button
               type="button"
               onClick={() => {
-                // Ensure committed inputs
                 if (oversInput && !isNaN(Number(oversInput))) handleOversChange(Number(oversInput));
                 if (playersPerSideInput && !isNaN(Number(playersPerSideInput))) handlePlayersPerSideChange(Number(playersPerSideInput));
                 if (wicketsInput && !isNaN(Number(wicketsInput))) handleWicketsChange(Number(wicketsInput));
@@ -898,11 +885,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         </div>
       )}
 
-      {/* Squad Manager Modal for Selected Team (Any size, C, VC, WK, Playing/Bench) */}
       {squadModalTeam && (
         <div className="fixed inset-0 z-60 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
           <div className="w-full max-w-md max-h-[90vh] flex flex-col rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 shadow-2xl overflow-hidden">
-            {/* Header */}
             <div className="flex items-center justify-between px-4 py-3.5 border-b border-slate-800 bg-slate-950">
               <div>
                 <h3 className="text-sm font-black text-white uppercase flex items-center gap-2">
@@ -921,7 +906,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </button>
             </div>
 
-            {/* Squad List */}
             <div className="flex-1 overflow-y-auto p-3 space-y-2 divide-y divide-slate-800/60">
               {(squadModalTeam === 'A' ? teamA.players : teamB.players).map((p, idx) => {
                 const isPlaying = (squadModalTeam === 'A' ? effectiveSquadA : effectiveSquadB).includes(p.id);
@@ -975,7 +959,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      {/* C, VC, WK buttons */}
                       <div className="flex items-center gap-0.5 bg-slate-900 p-0.5 rounded-lg border border-slate-800">
                         <button
                           type="button"
@@ -1018,7 +1001,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                         </button>
                       </div>
 
-                      {/* Playing/Bench Toggle */}
                       <button
                         type="button"
                         onClick={() => togglePlaying(!isPlaying)}
@@ -1036,7 +1018,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               })}
             </div>
 
-            {/* Done button */}
             <div className="p-3 bg-slate-950 border-t border-slate-800">
               <button
                 type="button"
@@ -1050,7 +1031,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         </div>
       )}
 
-      {/* Toss Modal (Screenshot 5) */}
       {showTossModal && (
         <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
           <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-5 shadow-2xl text-slate-100">
@@ -1064,7 +1044,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </button>
             </div>
 
-            {/* Team Cards */}
             <div className="grid grid-cols-2 gap-3">
               <div
                 onClick={() => setTossWinnerId(teamA.id)}
@@ -1095,7 +1074,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </div>
             </div>
 
-            {/* Decided to Bat / Bowl */}
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 block text-center">Decided to?</label>
               <div className="grid grid-cols-2 gap-2">
