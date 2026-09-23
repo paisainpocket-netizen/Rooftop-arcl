@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Match } from '../types/cricket';
-import { Share2, Copy, Check, X, Trophy, Download, Image as ImageIcon, Sparkles, Users } from 'lucide-react';
+import { Share2, Copy, Check, X, Download, Sparkles } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 
 interface ShareMatchCardProps {
@@ -24,7 +24,7 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
       return (teamPlayers || []).map((p) => p.name);
     }
     return squadIds
-      .map((id) => teamPlayers.find((p) => p.id === id)?.name)
+      .map((id) => teamPlayers?.find((p) => p.id === id)?.name)
       .filter((name): name is string => Boolean(name));
   };
 
@@ -311,8 +311,11 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
         }
         setIsGenerating(false);
       }, 'image/png');
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      if (e?.name !== 'AbortError') {
+        alert('Share nahi ho paaya, "Save Poster" try karo.');
+      }
       setIsGenerating(false);
     }
   };
