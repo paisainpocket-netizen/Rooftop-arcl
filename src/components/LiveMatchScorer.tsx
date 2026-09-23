@@ -1260,12 +1260,13 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     setIsEndMatchModalOpen(true);
   };
 
-  const handleFinalizeEndMatch = () => {
-        const winnerTeam = [match?.teamA, match?.teamB].find((t) => t?.id === selectedWinnerId);
+    const handleFinalizeEndMatch = () => {
+    const winnerTeam = [match?.teamA, match?.teamB].find((t) => t?.id === selectedWinnerId);
     const momPlayer = [...(match?.teamA?.players || []), ...(match?.teamB?.players || [])].find((p) => p.id === selectedMomId);
     const momScore = mvpScores.find((s) => s.playerId === selectedMomId);
+
     const summaryText = customResultSummary.trim() ||
-      (winnerTeam ? `${winnerTeam.name} won the match! 🏆ma 'Match Concluded.');
+      (winnerTeam ? `${winnerTeam.name} won the match! 🏆` : 'Match Concluded');
 
     cricketAudio.playVictory();
     cricketAudio.speak(`${winnerTeam?.name || 'Match'} declared finished!`);
