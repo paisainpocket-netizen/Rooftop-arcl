@@ -821,6 +821,21 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     let nextStrikerId = striker.id;
     let nextNonStrikerId = nonStriker.id;
 
+    // 1. Wicket girne par pehle out hone wale ko replace karo
+    if (isWicket && wicketDetails) {
+      const remainingUnbatted = battingSquad.filter(
+        (p) => !updatedBattingStats[p.id]?.isOut && p.id !== striker.id && p.id !== nonStriker.id
+      );
+      const nextBatsman = remainingUnbatted[0];
+
+      if (wicketDetails.dismissedPlayerId === striker.id) {
+        nextStrikerId = nextBatsman ? nextBatsman.id : '';
+      } else if (wicketDetails.dismissedPlayerId === nonStriker.id) {
+        nextNonStrikerId = nextBatsman ? nextBatsman.id : '';
+      }
+    }
+
+    // 2. Odd runs par swap
     const isOddRuns = runsBat % 2 !== 0;
     if (isOddRuns) {
       const temp = nextStrikerId;
@@ -828,25 +843,13 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       nextNonStrikerId = temp;
     }
 
+    // 3. Over khatam hone par swap
     if (shouldSwapStrikeOnOver) {
       const temp = nextStrikerId;
       nextStrikerId = nextNonStrikerId;
       nextNonStrikerId = temp;
     }
 
-    // Pick next batsman if wicket fell
-    if (isWicket && wicketDetails) {
-      const remainingUnbatted = battingSquad.filter(
-        (p) => !updatedBattingStats[p.id]?.isOut && p.id !== nextStrikerId && p.id !== nextNonStrikerId
-      );
-      if (remainingUnbatted.length > 0) {
-        if (wicketDetails.dismissedPlayerId === striker.id) {
-          nextStrikerId = remainingUnbatted[0].id;
-        } else {
-          nextNonStrikerId = remainingUnbatted[0].id;
-        }
-      }
-    }
 
     const updatedInnings: Innings = {
       ...currentInnings,
@@ -1292,8 +1295,9 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
     handleScoreBall(0, 'none', 0, true, {
       wicketType,
-      dismissedPlayerId: dismissedPlayer.id,
-      dismissedPlayerName: dismissedPlayer.name,
+      dismissedPlayerId: dismissedPlayer?.id || 'p1',
+dismissedPlayerName: dismissedPlayer?.name || 'Batsman',
+
       fielderId: fielder?.id,
       fielderName: fielder?.name,
     });
