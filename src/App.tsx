@@ -944,6 +944,7 @@ export default function App() {
     setActiveTab('live');
   };
 
+
   const handleResumeMatchGeneral = (match: Match) => {
     setIsMatchSettingsOpen(false);
     setSelectedMatchForSettings(null);
