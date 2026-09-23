@@ -194,25 +194,26 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   const displayInnings = getDisplayInnings(viewInningsNum);
 
-  const playingPlayersA = useMemo(() => {
+    const playingPlayersA = useMemo(() => {
     if (match.playingSquadA && match.playingSquadA.length > 0) {
-      const filtered = match.teamA.players.filter(
+      const filtered = match?.teamA?.players?.filter(
         (p) => match.playingSquadA?.includes(p.id) || (p.profileId && match.playingSquadA?.includes(p.profileId))
       );
-      if (filtered.length > 0) return filtered;
+      if (filtered && filtered.length > 0) return filtered;
     }
-    return match.teamA.players;
-  }, [match.playingSquadA, match.teamA.players]);
+    return match?.teamA?.players || [];
+  }, [match.playingSquadA, match?.teamA?.players]);
 
   const playingPlayersB = useMemo(() => {
     if (match.playingSquadB && match.playingSquadB.length > 0) {
-      const filtered = match.teamB.players.filter(
+      const filtered = match?.teamB?.players?.filter(
         (p) => match.playingSquadB?.includes(p.id) || (p.profileId && match.playingSquadB?.includes(p.profileId))
       );
-      if (filtered.length > 0) return filtered;
+      if (filtered && filtered.length > 0) return filtered;
     }
-    return match.teamB.players;
-  }, [match.playingSquadB, match.teamB.players]);
+    return match?.teamB?.players || [];
+  }, [match.playingSquadB, match?.teamB?.players]);
+
 
   const teamA = match?.teamA || { id: 'team-a', name: 'Team A', shortName: 'TMA', color: '#10b981', players: [] };
   const teamB = match?.teamB || { id: 'team-b', name: 'Team B', shortName: 'TMB', color: '#f59e0b', players: [] };
@@ -412,8 +413,8 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     let runsThisOverForBowler = 0;
     let totalRunsThisOver = 0;
     let wicketsThisOver = 0;
-
-    inn.balls.forEach((b) => {
+    
+        inn?.balls?.forEach((b) => {
       batRuns[b.strikerId] = (batRuns[b.strikerId] || 0) + b.runsBat;
       batBalls[b.strikerId] = (batBalls[b.strikerId] || 0) + (b.extraType === 'wide' ? 0 : 1);
 
@@ -475,9 +476,9 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   const overEndSnapshots = useMemo(() => getSnapshotsForInnings(displayInnings), [displayInnings]);
 
-  const currentOverBalls = currentInnings.balls.filter(
-    (b) => b.overNumber === currentInnings.oversCompleted
-  );
+    const currentOverBalls = currentInnings?.balls?.filter(
+    (b) => b.overNumber === currentInnings?.oversCompleted
+  ) || [];
 
   const isMatchFinished = match.status === 'completed';
 
@@ -1260,12 +1261,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   };
 
   const handleFinalizeEndMatch = () => {
-    const winnerTeam = [match.teamA, match.teamB].find((t) => t.id === selectedWinnerId);
-    const momPlayer = [...match.teamA.players, ...match.teamB.players].find((p) => p.id === selectedMomId);
+        const winnerTeam = [match?.teamA, match?.teamB].find((t) => t?.id === selectedWinnerId);
+    const momPlayer = [...(match?.teamA?.players || []), ...(match?.teamB?.players || [])].find((p) => p.id === selectedMomId);
     const momScore = mvpScores.find((s) => s.playerId === selectedMomId);
-
     const summaryText = customResultSummary.trim() ||
-      (winnerTeam ? `${winnerTeam.name} won the match! 🏆` : 'Match Concluded.');
+      (winnerTeam ? `${winnerTeam.name} won the match! 🏆ma 'Match Concluded.');
 
     cricketAudio.playVictory();
     cricketAudio.speak(`${winnerTeam?.name || 'Match'} declared finished!`);
