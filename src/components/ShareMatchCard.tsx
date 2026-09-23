@@ -1,4 +1,4 @@
-import React, { useState, } from 'react';
+import React, { useState } from 'react';
 import { Match } from '../types/cricket';
 import { Share2, Copy, Check, X, Download, Sparkles } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
