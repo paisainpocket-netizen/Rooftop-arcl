@@ -281,44 +281,44 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     return canvas;
   };
 
-  const handleSharePoster = async () => {
+   const handleSharePoster = async () => {
     try {
       setIsGenerating(true);
       cricketAudio.playClick();
+      
       const canvas = drawPosterCanvas();
+      
+      // Synchronous toDataURL taaki mobile Web Share API click token na khoye
+      const dataUrl = canvas.toDataURL('image/png');
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `ARCL_Fixture_${match.id}.png`, { type: 'image/png' });
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) {
-          setIsGenerating(false);
-          return;
-        }
-
-        const file = new File([blob], `ARCL_Fixture_${match.id}.png`, { type: 'image/png' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          await navigator.share({
-            files: [file],
-            title: `${match.teamA.name} vs ${match.teamB.name}`,
-            text: generateWhatsAppText(),
-          });
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `ARCL_${match.teamA.name}_vs_${match.teamB.name}.png`;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-        setIsGenerating(false);
-      }, 'image/png');
-    } catch (e: any) {
-      console.error(e);
-      if (e?.name !== 'AbortError') {
-        alert('Share nahi ho paaya, "Save Poster" try karo.');
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${match.teamA.name} vs ${match.teamB.name}`,
+          text: generateWhatsAppText(),
+        });
+      } else {
+        // Fallback for browsers that don't support sharing files
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ARCL_${match.teamA.name}_vs_${match.teamB.name}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
       }
-      setIsGenerating(false);
+    } catch (e: any) {
+      console.error("Error sharing poster:", e);
+      if (e?.name !== 'AbortError') {
+        alert("Share cancel ho gaya ya fail ho gaya. Aap 'Save Poster' karke direct gallery se share kar sakte hain.");
+      }
+    } finally {
+      setIsGenerating(false); 
     }
   };
+
 
   const handleDownloadPosterOnly = () => {
     cricketAudio.playClick();
