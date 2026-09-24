@@ -365,6 +365,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     if (ballsList.length === 0) return;
 
     const latestBall = ballsList[ballsList.length - 1];
+    
     if (!lastProcessedBallIdRef.current) {
       lastProcessedBallIdRef.current = latestBall.id;
       return;
@@ -372,6 +373,36 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
     if (latestBall.id !== lastProcessedBallIdRef.current) {
       lastProcessedBallIdRef.current = latestBall.id;
+
+      let eventType: 'dot' | 'single' | 'two' | 'three' | 'four' | 'six' | 'wicket' | 'wide' | 'noball' | 'direct_roof' | 'wall_catch' | 'retired_hurt' = 'dot';
+      
+      if (latestBall.isWicket) {
+        if (latestBall.wicketType === 'direct_roof_out') eventType = 'direct_roof';
+        else if (latestBall.wicketType === 'wall_catch') eventType = 'wall_catch';
+        else if (latestBall.wicketType === 'retired_hurt') eventType = 'retired_hurt';
+        else eventType = 'wicket';
+      } else if (latestBall.extraType === 'wide') {
+        eventType = 'wide';
+      } else if (latestBall.extraType === 'noBall') {
+        eventType = 'noball';
+      } else {
+        if (latestBall.runsBat === 0) eventType = 'dot';
+        else if (latestBall.runsBat === 1) eventType = 'single';
+        else if (latestBall.runsBat === 2) eventType = 'two';
+        else if (latestBall.runsBat === 3) eventType = 'three';
+        else if (latestBall.runsBat === 4) eventType = 'four';
+        else if (latestBall.runsBat === 6) eventType = 'six';
+        else eventType = 'single';
+      }
+
+      cricketAudio.announceBallEvent({
+        eventType,
+        batterName: latestBall.strikerName || 'Batsman',
+        bowlerName: latestBall.bowlerName || 'Bowler',
+        runs: latestBall.runsBat + latestBall.extraRuns,
+        wicketType: latestBall.wicketType,
+      });
+
       if (latestBall.isWicket) {
         if (latestBall.wicketType === 'direct_roof_out') {
           cricketAudio.playRoofOut();
@@ -387,7 +418,8 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
         cricketAudio.playBatHit();
       }
     }
-  }, [currentInnings?.balls?.length, canScore, voiceEnabled]);
+  }, [currentInnings?.balls, canScore, voiceEnabled]);
+
 
   // Point 3 Fix: Balls tab over summary strictly ignores retired_hurt in team and over wickets
   const getSnapshotsForInnings = (inn: Innings) => {
@@ -2419,7 +2451,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
         </div>
       )}
 
-retur{/* TAB 4: STATS */}
+      {/* TAB 4: STATS */}
       {centreTab === 'stats' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2438,7 +2470,8 @@ retur{/* TAB 4: STATS */}
                     </div>
                   ))}
               </div>
-  ret    </div>
+            </div>
+
 
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
               <span className="text-xs font-black text-emerald-400 uppercase tracking-wider block">
