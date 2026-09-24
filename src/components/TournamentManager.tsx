@@ -1344,4 +1344,5 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       )}
     </div>
   );
-};
+  });
+
