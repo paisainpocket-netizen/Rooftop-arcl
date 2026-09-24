@@ -122,6 +122,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     cricketAudio.playClick();
   };
 
+  const isAdmin = loggedInPlayerProfileId === 'ARCL-001';
+
   return (
     <>
       <header className={`sticky top-0 z-40 border-b backdrop-blur-md transition-colors ${
@@ -131,13 +133,13 @@ export const Navbar: React.FC<NavbarProps> = ({
       }`}>
         <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
           {/* Hamburger + Brand */}
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2 min-w-0">
             <button
               onClick={() => {
                 setIsDrawerOpen(true);
                 cricketAudio.playClick();
               }}
-              className={`p-2 rounded-xl border transition cursor-pointer ${
+              className={`p-2 rounded-xl border transition cursor-pointer shrink-0 ${
                 isDarkMode
                   ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
                   : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-black'
@@ -148,37 +150,39 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <div 
-              className="flex items-center gap-2 cursor-pointer select-none" 
+              className="flex items-center gap-2 cursor-pointer select-none min-w-0" 
               onClick={() => setActiveTab('live')}
             >
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white text-lg shadow-md font-black border border-amber-400/30">
-                🏏
-              </div>
-              <div>
+              <img
+                src="/icon-192.png"
+                alt="ARCL"
+                className="w-9 h-9 shrink-0 rounded-2xl object-cover shadow-md border border-amber-400/30"
+              />
+              <div className="min-w-0">
                 <div className="flex items-center gap-1.5">
                   <span className="font-black tracking-tight text-base bg-gradient-to-r from-amber-400 via-orange-300 to-yellow-400 bg-clip-text text-transparent">
                     ARCL
                   </span>
-                  <span className="text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="hidden sm:inline text-[9px] uppercase font-black tracking-wider px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                     Amritsar
                   </span>
                   <span 
                     title="Firebase Cloud Database Connected" 
-                    className="hidden lg:flex items-center gap-1 text-[8px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
+                    className="hidden 2xl:flex items-center gap-1 text-[8px] font-black tracking-wider uppercase px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/30"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     Cloud Live
                   </span>
                 </div>
-                <p className={`text-[9px] font-medium hidden sm:block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className={`text-[9px] font-medium hidden md:block ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                   Rooftop Cricket League
                 </p>
               </div>
             </div>
           </div>
 
-          {/* Desktop Navigation Links */}
-          <div className="hidden md:flex items-center gap-1 bg-slate-900/40 dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-800/80">
+          {/* Desktop Navigation Links (wide screens only) */}
+          <div className="hidden xl:flex items-center gap-1 bg-slate-900/40 dark:bg-slate-900/60 p-1 rounded-2xl border border-slate-800/80">
             {[
               { id: 'live', label: 'Match Centre', icon: Play, badge: hasActiveMatch ? 'LIVE' : undefined },
               { id: 'matches', label: 'Matches', icon: Trophy },
@@ -212,7 +216,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Action Controls */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Theme Selector Button */}
             <button
               onClick={() => {
@@ -235,11 +239,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               />
             </button>
 
-            {/* Sound Toggle */}
+            {/* Sound Toggle (wide screens; lives in the drawer on phones) */}
             <button
               onClick={handleToggleMute}
               title={isMuted ? 'Unmute Commentary' : 'Mute Commentary'}
-              className={`p-2 rounded-xl border transition cursor-pointer ${
+              className={`hidden xl:block p-2 rounded-xl border transition cursor-pointer ${
                 isDarkMode
                   ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
                   : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-black'
@@ -248,11 +252,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
             </button>
 
-            {/* Light / Dark Mode Toggle */}
+            {/* Light / Dark Mode Toggle (wide screens; lives in the drawer on phones) */}
             <button
               onClick={onToggleTheme}
               title="Toggle Light / Dark mode"
-              className={`p-2 rounded-xl border transition cursor-pointer ${
+              className={`hidden xl:block p-2 rounded-xl border transition cursor-pointer ${
                 isDarkMode
                   ? 'bg-slate-900 border-slate-800 text-amber-400 hover:bg-slate-800'
                   : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
@@ -266,22 +270,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1">
                 <button
                   onClick={onOpenLoginModal}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
-                    loggedInPlayerProfileId === 'ARCL-001'
+                  className={`flex items-center gap-1.5 p-2 xl:px-2.5 xl:py-1.5 rounded-xl border text-xs font-bold transition cursor-pointer ${
+                    isAdmin
                       ? 'border-amber-500/50 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
                       : 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
                   }`}
-                  title="Open Account & Profile Settings"
+                  title={isAdmin ? 'Admin – Account & Profile Settings' : 'Open Account & Profile Settings'}
                 >
-                  {loggedInPlayerProfileId === 'ARCL-001' ? (
-                    <span className="text-amber-400 font-black">👑</span>
+                  {isAdmin ? (
+                    <span className="text-amber-400 font-black leading-none w-4 h-4 flex items-center justify-center text-sm">👑</span>
                   ) : loggedInPlayerAvatar ? (
                     <img src={loggedInPlayerAvatar} alt="" className="w-4 h-4 rounded-full object-cover" />
                   ) : (
-                    <UserCheck className="w-3.5 h-3.5" />
+                    <UserCheck className="w-4 h-4" />
                   )}
-                  <span className="truncate max-w-[85px] sm:max-w-[110px]">
-                    {loggedInPlayerProfileId === 'ARCL-001' ? 'Admin' : loggedInPlayerName}
+                  <span className="hidden xl:inline truncate max-w-[110px]">
+                    {isAdmin ? 'Admin' : loggedInPlayerName}
                   </span>
                 </button>
 
@@ -291,23 +295,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                     onLogout();
                   }}
                   title="Logout from current account"
-                  className="p-1.5 sm:px-2 sm:py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-bold flex items-center gap-1 transition cursor-pointer"
+                  className="hidden xl:flex px-2 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-400 hover:text-rose-300 text-xs font-bold items-center gap-1 transition cursor-pointer"
                 >
                   <LogOut className="w-3.5 h-3.5" />
-                  <span className="hidden sm:inline">Logout</span>
+                  <span>Logout</span>
                 </button>
               </div>
             ) : (
               <button
                 onClick={onOpenLoginModal}
-                className={`p-2 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                className={`p-2 xl:px-2.5 xl:py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
                   isDarkMode
                     ? 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
                     : 'bg-slate-100 border-slate-200 text-slate-700 hover:text-black'
                 }`}
+                title="Login with PIN"
               >
                 <User className="w-4 h-4 text-cyan-400" />
-                <span className="hidden sm:inline">Login / PIN</span>
+                <span className="hidden xl:inline">Login / PIN</span>
               </button>
             )}
 
@@ -322,10 +327,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }
                 cricketAudio.playClick();
               }}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 text-xs font-black shadow-md shadow-orange-500/20 active:scale-95 transition cursor-pointer"
+              title="Start New Match"
+              className="flex items-center gap-1 p-2 sm:px-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 text-xs font-black shadow-md shadow-orange-500/20 active:scale-95 transition cursor-pointer"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span className="hidden xs:inline">Match</span>
+              <span className="hidden sm:inline">Match</span>
             </button>
           </div>
         </div>
@@ -344,16 +350,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           }`}>
             <div className={`p-5 border-b ${isDarkMode ? 'border-slate-800/80 bg-slate-900/50' : 'border-slate-100 bg-slate-50'}`}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-amber-500/50 bg-slate-800 flex items-center justify-center text-white text-xl font-black shadow-md">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-12 h-12 shrink-0 rounded-full overflow-hidden border-2 border-amber-500/50 bg-slate-800 flex items-center justify-center text-white text-xl font-black shadow-md">
                     {loggedInPlayerAvatar ? (
                       <img src={loggedInPlayerAvatar} alt="" className="w-full h-full object-cover" />
                     ) : (
                       <span>{loggedInPlayerName ? loggedInPlayerName.charAt(0).toUpperCase() : '🏏'}</span>
                     )}
                   </div>
-                  <div>
-                    <h3 className="font-black text-base text-white tracking-tight">
+                  <div className="min-w-0">
+                    <h3 className={`font-black text-base tracking-tight truncate ${isDarkMode ? 'text-white' : 'text-slate-900'}`}>
                       {loggedInPlayerName || 'ARCL Player'}
                     </h3>
                     {loggedInPlayerProfileId && (
@@ -361,6 +367,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20">
                           ID: {loggedInPlayerProfileId}
                         </span>
+                        {isAdmin && (
+                          <span className="text-[10px] font-black px-1.5 py-0.5 rounded bg-amber-500 text-slate-950">
+                            👑 Admin
+                          </span>
+                        )}
                       </div>
                     )}
                   </div>
@@ -368,7 +379,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 <button
                   onClick={() => setIsDrawerOpen(false)}
-                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+                  className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer shrink-0"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -421,6 +432,38 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </span>
                   <ChevronRight className="w-4 h-4 opacity-50" />
                 </div>
+              </button>
+
+              {/* Sound toggle (moved here from the header on phones) */}
+              <button
+                onClick={handleToggleMute}
+                className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                  isDarkMode ? 'text-slate-200 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+                  <span className="text-sm font-semibold">Commentary Sound</span>
+                </div>
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                  isMuted ? 'bg-rose-500/15 text-rose-400' : 'bg-emerald-500/15 text-emerald-400'
+                }`}>
+                  {isMuted ? 'OFF' : 'ON'}
+                </span>
+              </button>
+
+              {/* Light / Dark toggle (moved here from the header on phones) */}
+              <button
+                onClick={onToggleTheme}
+                className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                  isDarkMode ? 'text-slate-200 hover:bg-slate-900' : 'text-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-amber-400" />}
+                  <span className="text-sm font-semibold">{isDarkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                </div>
+                <ChevronRight className="w-4 h-4 opacity-50" />
               </button>
 
               {[
