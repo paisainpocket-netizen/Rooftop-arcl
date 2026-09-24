@@ -16,3 +16,22 @@ html, body {
 #root {
   overflow-x: hidden;
 }
+[data-arcl-theme="ipl_gold"] {
+  --theme-primary: #f59e0b;
+  --theme-bg: #020617;
+}
+
+[data-arcl-theme="cyber_turf"] {
+  --theme-primary: #10b981;
+  --theme-bg: #022218;
+}
+
+[data-arcl-theme="electric_sunset"] {
+  --theme-primary: #f97316;
+  --theme-bg: #1f0c05;
+}
+
+[data-arcl-theme="stealth_carbon"] {
+  --theme-primary: #38bdf8;
+  --theme-bg: #0f172a;
+}
