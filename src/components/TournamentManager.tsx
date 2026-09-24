@@ -944,8 +944,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   { header: 'Overs', render: (p) => <span>{p.oversBowled}</span> },
                   { header: 'Runs', render: (p) => <span>{p.runsConceded}</span> },
                   { header: 'Econ', render: (p) => <span>{p.economy.toFixed(2)}</span> },
-                  { header: 'Best', render: (p) => <span>{bestBowlingLabel(p.bestBowlingWickets, p.bestBowlingRuns)}</span> },
-                ]}
+                  { header: 'Best', render: (p) => <span>{p.bestBowlingWickets ? `${p.bestBowlingWickets}/${p.bestBowlingRuns}` : '-'}</span> },
+
               />
             )}
 
