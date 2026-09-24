@@ -1212,8 +1212,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     });
   };
 
-  const handleDeclareInnings = () => {
-    if (!isTestMatch) return;
+    const handleDeclareInnings = () => {
     setIsDeclareConfirmOpen(true);
   };
 
@@ -1224,18 +1223,23 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       onUpdateMatch({
         ...match,
         currentInningsNumber: 2,
+        targetRuns: !isTestMatch ? currentInnings.totalRuns + 1 : match.targetRuns,
         currentStrikerId: bowlingSquad[0]?.id || 'p1',
         currentNonStrikerId: bowlingSquad[1]?.id || 'p2',
         currentBowlerId: battingSquad[0]?.id || 'b1',
         updatedAt: Date.now(),
       });
     } else if (currentInningsNum === 2) {
-      onUpdateMatch({
-        ...match,
-        status: 'innings_break',
-        awaitingFollowOnDecision: true,
-        updatedAt: Date.now(),
-      });
+      if (isTestMatch) {
+        onUpdateMatch({
+          ...match,
+          status: 'innings_break',
+          awaitingFollowOnDecision: true,
+          updatedAt: Date.now(),
+        });
+      } else {
+        handleOpenEndMatchModal();
+      }
     } else if (currentInningsNum === 3) {
       const isFollowOn = match.followOnDecision === 'enforce_follow_on';
       const leaderTotal = (isFollowOn ? inn2Runs : inn1Runs) + currentInnings.totalRuns;
@@ -1252,6 +1256,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       });
     }
   };
+
 
   const handleOpenEndMatchModal = () => {
     if (!selectedMomId && recommendedMom) {
@@ -1454,7 +1459,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
             </button>
           )}
 
-          {isTestMatch && !isMatchFinished && canScore && (
+          {!isMatchFinished && canScore && (
             <button
               onClick={handleDeclareInnings}
               title="Declare Innings"
@@ -2414,7 +2419,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
         </div>
       )}
 
-      {/* TAB 4: STATS */}
+retur{/* TAB 4: STATS */}
       {centreTab === 'stats' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -2433,7 +2438,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                     </div>
                   ))}
               </div>
-            </div>
+  ret    </div>
 
             <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2">
               <span className="text-xs font-black text-emerald-400 uppercase tracking-wider block">
@@ -2519,118 +2524,119 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                   const ballsInOver = overGroups.get(overNum)!;
                   const snap = overEndSnapshots.get(overNum);
 
-                  return (
-                    <div key={overNum} className="space-y-1.5">
-                      {[...ballsInOver].reverse().map((b) => (
-                        <div
-                          key={b.id}
-                          onClick={() => setSelectedBallDetail(b)}
-                          className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
-                            b.isWicket && b.wicketType === 'retired_hurt'
-                              ? 'bg-blue-950/30 border-blue-800/60 hover:bg-blue-950/50'
-                              : b.isWicket
-                              ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
-                              : b.isSix
-                              ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
-                              : b.isFour
-                              ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
-                              : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
-                              {b.displayOver}
-                            </span>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
-                                {b.isWicket && (
-                                  <span className={`px-1.5 py-0.2 rounded text-white font-black text-[9px] uppercase ${b.wicketType === 'retired_hurt' ? 'bg-blue-600' : 'bg-rose-600'}`}>
-                                    {b.wicketType === 'retired_hurt' ? 'Retired Hurt' : 'Wicket'}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
-                            </div>
-                          </div>
-
-                          <div className="text-right">
-                            <span className={`text-base font-black font-mono ${
-                              b.isWicket && b.wicketType === 'retired_hurt' ? 'text-blue-400' : b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
-                            }`}>
-                              {b.isWicket && b.wicketType === 'retired_hurt' ? 'RH' : b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.extraType === 'bye' ? `${b.extraRuns}b` : b.extraType === 'legBye' ? `${b.extraRuns}lb` : b.runsBat}
-                            </span>
-                          </div>
-                        </div>
-                      ))}
-
-                      {snap && (
-                        <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-900 border border-slate-800 p-3.5 space-y-2.5 shadow-md">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-mono font-black text-xs border border-emerald-500/30">
-                                Over {overNum + 1}
-                              </span>
-                              <span className="text-xs font-black text-amber-400">
-                                Runs in this over: {snap.overRuns} {snap.overWickets > 0 ? `(${snap.overWickets} W)` : ''}
-                              </span>
-                            </div>
-                            <span className="text-xs font-mono font-black text-white">
-                              Total: {snap.teamRuns}-{snap.teamWickets}
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap gap-1.5">
-                            {ballsInOver.map((b) => (
-                              <span
-                                key={b.id}
-                                className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-mono font-black ${
-                                  b.isWicket && b.wicketType === 'retired_hurt'
-                                    ? 'bg-blue-600 text-white'
-                                    : b.isWicket
-                                    ? 'bg-rose-600 text-white'
-                                    : b.isSix
-                                    ? 'bg-purple-600 text-white'
-                                    : b.isFour
-                                    ? 'bg-blue-600 text-white'
-                                    : b.extraType !== 'none'
-                                    ? 'bg-transparent border border-slate-500 text-slate-300'
-                                    : 'bg-slate-700 text-slate-200'
-                                }`}
-                              >
-                                {b.isWicket && b.wicketType === 'retired_hurt'
-                                  ? 'RH'
-                                  : b.isWicket
-                                  ? 'W'
-                                  : b.extraType === 'wide'
-                                  ? 'Wd'
-                                  : b.extraType === 'noBall'
-                                  ? 'Nb'
-                                  : b.extraType === 'bye'
-                                  ? 'B'
-                                  : b.extraType === 'legBye'
-                                  ? 'Lb'
-                                  : b.runsBat}
-                              </span>
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-slate-800/80 pt-2">
-                            <span className="text-slate-200 font-bold truncate">
-                              {snap.strikerName} <span className="text-slate-400 font-mono">{snap.strikerRuns}({snap.strikerBalls})</span>
-                            </span>
-                            <span className="text-slate-200 font-bold truncate text-right">{snap.bowlerName}</span>
-                            <span className="text-slate-200 font-bold truncate">
-                              {snap.nonStrikerName} <span className="text-slate-400 font-mono">{snap.nonStrikerRuns}({snap.nonStrikerBalls})</span>
-                            </span>
-                            <span className="text-slate-400 font-mono text-right">{snap.bowlerFigure}</span>
-                          </div>
-                        </div>
-                      )}
+          
+                              return (
+            <div key={overNum} className="space-y-1.5">
+              {/* OVER SUMMARY AB UPAR HAI */}
+              {snap && (
+                <div className="rounded-2xl bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-900 border border-slate-800 p-3.5 space-y-2.5 shadow-md">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-400 font-mono font-black text-xs border border-emerald-500/30">
+                        Over {overNum + 1}
+                      </span>
+                      <span className="text-xs font-black text-amber-400">
+                        Runs in this over: {snap.overRuns} {snap.overWickets > 0 ? `(${snap.overWickets} W)` : ''}
+                      </span>
                     </div>
-                  );
-                });
-              })()
+                    <span className="text-xs font-mono font-black text-white">
+                      Total: {snap.teamRuns}-{snap.teamWickets}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {ballsInOver.map((b) => (
+                      <span
+                        key={b.id}
+                        className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-mono font-black ${
+                          b.isWicket && b.wicketType === 'retired_hurt'
+                            ? 'bg-blue-600 text-white'
+                            : b.isWicket
+                            ? 'bg-rose-600 text-white'
+                            : b.isSix
+                            ? 'bg-purple-600 text-white'
+                            : b.isFour
+                            ? 'bg-blue-600 text-white'
+                            : b.extraType !== 'none'
+                            ? 'bg-transparent border border-slate-500 text-slate-300'
+                            : 'bg-slate-700 text-slate-200'
+                        }`}
+                      >
+                        {b.isWicket && b.wicketType === 'retired_hurt'
+                          ? 'RH'
+                          : b.isWicket
+                          ? 'W'
+                          : b.extraType === 'wide'
+                          ? 'Wd'
+                          : b.extraType === 'noBall'
+                          ? 'Nb'
+                          : b.extraType === 'bye'
+                          ? 'B'
+                          : b.extraType === 'legBye'
+                          ? 'Lb'
+                          : b.runsBat}
+                      </span>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs border-t border-slate-800/80 pt-2">
+                    <span className="text-slate-200 font-bold truncate">
+                      {snap.strikerName} <span className="text-slate-400 font-mono">{snap.strikerRuns}({snap.strikerBalls})</span>
+                    </span>
+                    <span className="text-slate-200 font-bold truncate text-right">{snap.bowlerName}</span>
+                    <span className="text-slate-200 font-bold truncate">
+                      {snap.nonStrikerName} <span className="text-slate-400 font-mono">{snap.nonStrikerRuns}({snap.nonStrikerBalls})</span>
+                    </span>
+                    <span className="text-slate-400 font-mono text-right">{snap.bowlerFigure}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* BALLS WALA LOOP AB SUMMARY KE NICHE HAI */}
+              {[...ballsInOver].reverse().map((b) => (
+                <div
+                  key={b.id}
+                  onClick={() => setSelectedBallDetail(b)}
+                  className={`p-3 rounded-2xl border flex items-center justify-between transition cursor-pointer ${
+                    b.isWicket && b.wicketType === 'retired_hurt'
+                      ? 'bg-blue-950/30 border-blue-800/60 hover:bg-blue-950/50'
+                      : b.isWicket
+                      ? 'bg-rose-950/30 border-rose-800/60 hover:bg-rose-950/50'
+                      : b.isSix
+                      ? 'bg-purple-950/30 border-purple-800/60 hover:bg-purple-950/50'
+                      : b.isFour
+                      ? 'bg-emerald-950/30 border-emerald-800/60 hover:bg-emerald-950/50'
+                      : 'bg-slate-950 border-slate-800 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-xl bg-slate-800 border border-slate-700 flex items-center justify-center font-mono font-black text-xs text-white">
+                      {b.displayOver}
+                    </span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">{b.bowlerName} to {b.strikerName}</span>
+                        {b.isWicket && (
+                          <span className={`px-1.5 py-0.2 rounded text-white font-black text-[9px] uppercase ${b.wicketType === 'retired_hurt' ? 'bg-blue-600' : 'bg-rose-600'}`}>
+                            {b.wicketType === 'retired_hurt' ? 'Retired Hurt' : 'Wicket'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-400 truncate max-w-md">{b.commentary}</p>
+                    </div>
+                  </div>
+
+                  <div className="text-right">
+                    <span className={`text-base font-black font-mono ${
+                      b.isWicket && b.wicketType === 'retired_hurt' ? 'text-blue-400' : b.isWicket ? 'text-rose-400' : b.isSix ? 'text-purple-400' : b.isFour ? 'text-emerald-400' : 'text-white'
+                    }`}>
+                      {b.isWicket && b.wicketType === 'retired_hurt' ? 'RH' : b.isWicket ? 'W' : b.extraType === 'wide' ? `${b.extraRuns}wd` : b.extraType === 'noBall' ? `${b.runsBat + b.extraRuns}nb` : b.extraType === 'bye' ? `${b.extraRuns}b` : b.extraType === 'legBye' ? `${b.extraRuns}lb` : b.runsBat}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
             )}
           </div>
         </div>
