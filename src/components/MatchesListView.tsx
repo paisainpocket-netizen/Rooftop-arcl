@@ -412,69 +412,146 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Scoreboard Body */}
-                <div className="p-4 space-y-3">
-                  <div className="space-y-2">
-                    {/* Team A Row */}
-                    <div className={`p-2.5 rounded-2xl flex items-center justify-between transition ${
-                      scoreA?.isBattingNow ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-slate-950/60'
-                    }`}>
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-emerald-600/30 border border-emerald-500/40 flex items-center justify-center text-xs font-black text-emerald-300 shrink-0">
-                          {m.teamA.shortName || m.teamA.name.slice(0, 3).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-sm font-black text-white block truncate">{m.teamA.name}</span>
-                          {scoreA?.isBattingNow && (
-                            <span className="text-[9px] font-black uppercase text-amber-400 font-mono tracking-wider flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" /> Batting
-                            </span>
-                          )}
-                        </div>
-                      </div>
+                                {/* Scoreboard Body (VIP Premium Design & Fully Clickable) */}
+                <div 
+                  onClick={() => {
+                    // Card par kahin bhi click karne se ab match open ho jayega!
+                    if (!actionsOpen) {
+                      onSelectMatch(m);
+                      cricketAudio.playClick();
+                    }
+                  }}
+                  className="p-4 space-y-3 cursor-pointer group"
+                >
+                  <div className="space-y-2.5">
+                    
+                    {(() => {
+                      const isTestMatch = m.matchFormat === 'test' || m.settings?.matchType?.includes('Test');
+                      const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(Boolean);
+                      
+                      const renderTeamRow = (team, scoreInfo, isBatting) => {
+                        // Test match mein 1st aur 2nd innings ko team ke hisaab se group kiya
+                        const teamInns = isTestMatch ? allInnings.filter(i => i.teamId === team.id) : [];
+                        
+                        return (
+                          <div className={`p-3 rounded-2xl flex items-center justify-between transition-all duration-300 ${
+                            isBatting 
+                              ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' 
+                              : 'bg-slate-900/60 border border-slate-800/80 group-hover:border-slate-700'
+                          }`}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black shadow-inner shrink-0 ${
+                                team.id === m.teamA.id 
+                                  ? 'bg-gradient-to-br from-emerald-900/80 to-emerald-950 border border-emerald-500/30 text-emerald-400' 
+                                  : 'bg-gradient-to-br from-cyan-900/80 to-cyan-950 border border-cyan-500/30 text-cyan-400'
+                              }`}>
+                                {team.shortName || team.name.slice(0, 3).toUpperCase()}
+                              </div>
+                              <div className="min-w-0">
+                                <span className="text-sm font-black text-slate-100 block truncate">{team.name}</span>
+                                {isBatting && (
+                                  <span className="text-[9px] font-black uppercase text-amber-500 font-mono tracking-widest flex items-center gap-1.5 mt-0.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" /> Batting
+                                  </span>
+                                )}
+                              </div>
+                            </div>
 
-                      <div className="text-right font-mono">
-                        {scoreA ? (
-                          <>
-                            <span className="text-base font-black text-white">{scoreA.runs}-{scoreA.wickets}</span>
-                            <span className="text-[11px] text-slate-400 block font-sans">({scoreA.overs} ov)</span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-slate-500 italic">Yet to bat</span>
-                        )}
-                      </div>
-                    </div>
+                            <div className="text-right font-mono flex flex-col justify-center">
+                              {isTestMatch ? (
+                                teamInns.length > 0 ? (
+                                  <div className="flex flex-col gap-1 items-end">
+                                    {teamInns.map((ti, idx) => (
+                                      <div key={idx} className="flex items-center gap-2 leading-none">
+                                        <span className="text-[9px] text-slate-500 font-sans uppercase tracking-wider font-bold">Inn {idx+1}</span>
+                                        <span className="text-sm font-black text-white">{ti.totalRuns}<span className="text-slate-400 text-xs">/{ti.totalWickets}</span></span>
+                                        <span className="text-[10px] text-slate-400 w-10 text-right">({ti.oversCompleted}.{ti.ballsInCurrentOver})</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-slate-500 italic font-sans font-medium">Yet to bat</span>
+                                )
+                              ) : (
+                                scoreInfo ? (
+                                  <>
+                                    <span className="text-lg font-black text-white leading-none">
+                                      {scoreInfo.runs}<span className="text-slate-400 text-sm">/{scoreInfo.wickets}</span>
+                                    </span>
+                                    <span className="text-[10px] text-slate-500 block font-sans font-bold mt-1">({scoreInfo.overs} Overs)</span>
+                                  </>
+                                ) : (
+                                  <span className="text-xs text-slate-500 italic font-sans font-medium">Yet to bat</span>
+                                )
+                              )}
+                            </div>
+                          </div>
+                        );
+                      };
 
-                    {/* Team B Row */}
-                    <div className={`p-2.5 rounded-2xl flex items-center justify-between transition ${
-                      scoreB?.isBattingNow ? 'bg-amber-500/15 border border-amber-500/30' : 'bg-slate-950/60'
-                    }`}>
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-cyan-600/30 border border-cyan-500/40 flex items-center justify-center text-xs font-black text-cyan-300 shrink-0">
-                          {m.teamB.shortName || m.teamB.name.slice(0, 3).toUpperCase()}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-sm font-black text-white block truncate">{m.teamB.name}</span>
-                          {scoreB?.isBattingNow && (
-                            <span className="text-[9px] font-black uppercase text-amber-400 font-mono tracking-wider flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" /> Batting
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="text-right font-mono">
-                        {scoreB ? (
-                          <>
-                            <span className="text-base font-black text-white">{scoreB.runs}-{scoreB.wickets}</span>
-                            <span className="text-[11px] text-slate-400 block font-sans">({scoreB.overs} ov)</span>
-                          </>
-                        ) : (
-                          <span className="text-xs text-slate-500 italic">Yet to bat</span>
-                        )}
-                      </div>
-                    </div>
+                      return (
+                        <>
+                          {renderTeamRow(m.teamA, scoreA, scoreA?.isBattingNow)}
+                          {renderTeamRow(m.teamB, scoreB, scoreB?.isBattingNow)}
+                        </>
+                      );
+                    })()}
                   </div>
+
+                  {/* Match Situation Context Bar */}
+                  <div className="px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800/60 flex items-center justify-between text-[11px] group-hover:border-slate-700/80 transition-colors">
+                    <div className="flex items-center gap-2 text-slate-400 truncate">
+                      <MapPin className="w-3 h-3 text-emerald-500 shrink-0" />
+                      <span className="truncate font-medium">{m.venue || 'Rooftop Arena'}</span>
+                    </div>
+
+                    {isLive && currentInnNum === 2 && targetRuns ? (
+                      <span className="font-mono font-bold text-amber-400 shrink-0 bg-amber-500/10 px-2 py-0.5 rounded-md">
+                        Target: {targetRuns} (CRR: {crr})
+                      </span>
+                    ) : isLive ? (
+                      <span className="font-mono font-bold text-emerald-400 shrink-0 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                        CRR: {crr}
+                      </span>
+                    ) : isCompleted && m.result ? (
+                      <span className="font-bold text-emerald-400 truncate shrink-0 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                        🏆 {m.result.summary}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 font-bold">{m.date || 'Today'}</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom CTA Action Button */}
+                <div className="px-4 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2 rounded-b-3xl">
+                  <div className="text-[10px] text-slate-500 font-mono truncate font-medium">
+                    {m.delegatedScorerProfileId ? (
+                      <span className="text-amber-500 font-bold flex items-center gap-1">
+                        <BatteryMedium className="w-3.5 h-3.5" /> Scorer: {m.delegatedScorerName || m.delegatedScorerProfileId}
+                      </span>
+                    ) : (
+                      <span>By {m.creatorName || m.creatorProfileId || 'Official'}</span>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation(); // Card click aur button click overlap na ho
+                      onSelectMatch(m);
+                      cricketAudio.playClick();
+                    }}
+                    className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 shrink-0 ${
+                      canScore && !isCompleted
+                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-orange-500/20 hover:scale-105'
+                        : 'bg-slate-800 hover:bg-slate-700 text-white hover:scale-105'
+                    }`}
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <span>{isCompleted ? 'Scorecard' : canScore ? 'Score Match' : 'Watch Live'}</span>
+                  </button>
+                </div>
+
 
                   {/* Match Situation Context Bar */}
                   <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between text-[11px]">
