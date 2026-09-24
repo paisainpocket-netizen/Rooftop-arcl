@@ -2686,8 +2686,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 </div>
               ))}
             </div>
-          );
-            )}
+          );      
           </div>
         </div>
       )}
