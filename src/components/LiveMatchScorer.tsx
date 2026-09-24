@@ -1413,7 +1413,24 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="text-sm sm:text-base font-black truncate max-w-[190px] sm:max-w-xs">{match.name}</h1>
+                        <div className="flex items-center gap-2 group">
+            <h1 className="text-sm sm:text-base font-black truncate max-w-[190px] sm:max-w-xs">{match.name}</h1>
+            {canScore && (
+              <button
+                onClick={() => {
+                  const newName = window.prompt('Naya Match Title likhein:', match.name);
+                  if (newName && newName.trim() !== '' && newName !== match.name) {
+                    onUpdateMatch({ ...match, name: newName.trim(), updatedAt: Date.now() });
+                  }
+                }}
+                className="p-1.5 rounded-md bg-slate-800/50 text-slate-400 hover:text-emerald-400 hover:bg-slate-700 transition-all cursor-pointer"
+                title="Edit Match Name"
+              >
+                ✏️
+              </button>
+            )}
+          </div>
+
               <span
                 className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-black uppercase ${
                   isMatchFinished
