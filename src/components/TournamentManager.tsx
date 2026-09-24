@@ -429,20 +429,30 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           }
         }
 
-        ([m.innings1, m.innings2, m.innings3, m.innings4] as const).forEach((inn) => {
+                ([m.innings1, m.innings2, m.innings3, m.innings4] as const).forEach((inn) => {
           if (!inn) return;
           const battingTeamId = inn.teamId;
           if (!battingTeamId) return;
           const bowlingTeamId = battingTeamId === teamAId ? teamBId : battingTeamId === teamBId ? teamAId : undefined;
-          const oversFaced = (inn.oversCompleted || 0) + (inn.ballsInCurrentOver || 0) / 6;
+          
+          // Actual overs khele gaye
+          let actualOversFaced = (inn.oversCompleted || 0) + (inn.ballsInCurrentOver || 0) / 6;
+          
+          // NRR RULE: Agar team All-Out ho gayi (10 wickets) toh poore overs count honge
+          // Note: Agar aapke type mein 'wickets' property hai toh use check karein
+          const isAllOut = inn.isAllOut || inn.wickets === 10;
+          let oversForNRR = isAllOut ? (selectedTournament?.oversPerMatch || actualOversFaced) : actualOversFaced;
+
+          // Agar 0 overs hain toh calculation error se bachne ke liye thoda buffer (0.1) rakh lo ya exact oversForNRR rehne do
+          if (oversForNRR === 0) oversForNRR = 0.166; // 1 ball at least if they somehow got out on 0 ball
 
           if (tableMap[battingTeamId]) {
             tableMap[battingTeamId].runsScored += inn.totalRuns || 0;
-            tableMap[battingTeamId].oversFaced += Math.max(1, oversFaced);
+            tableMap[battingTeamId].oversFaced += oversForNRR;
           }
           if (bowlingTeamId && tableMap[bowlingTeamId]) {
             tableMap[bowlingTeamId].runsConceded += inn.totalRuns || 0;
-            tableMap[bowlingTeamId].oversBowled += Math.max(1, oversFaced);
+            tableMap[bowlingTeamId].oversBowled += oversForNRR;
           }
         });
       }
@@ -452,14 +462,17 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       .map((row) => {
         const forRR = row.oversFaced > 0 ? row.runsScored / row.oversFaced : 0;
         const againstRR = row.oversBowled > 0 ? row.runsConceded / row.oversBowled : 0;
-        const nrr = Number((forRR - againstRR).toFixed(3));
+        const nrr = row.played > 0 ? Number((forRR - againstRR).toFixed(3)) : 0.000;
         return { ...row, nrr };
       })
       .sort((a, b) => {
+        // 1st Priority: Points
         if (b.points !== a.points) return b.points - a.points;
+        // 2nd Priority: Wins (Jo team zyada match jeeti, woh upar)
+        if (b.won !== a.won) return b.won - a.won;
+        // 3rd Priority: Net Run Rate
         return b.nrr - a.nrr;
       });
-  }, [selectedTournament, teams, tournamentMatches]);
 
   const tournamentPlayerStats = useMemo((): TournamentPlayerStat[] => {
     return calculateTournamentStats(tournamentMatches);
