@@ -440,8 +440,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           
           // NRR RULE: Agar team All-Out ho gayi (10 wickets) toh poore overs count honge
           // Note: Agar aapke type mein 'wickets' property hai toh use check karein
-          const isAllOut = inn.isAllOut || inn.wickets === 10;
-          let oversForNRR = isAllOut ? (selectedTournament?.oversPerMatch || actualOversFaced) : actualOversFaced;
+          const isAllOut = inn.isAllOut || inn.wickets === 10;let oversForNRR = isAllOut ? (m.totalOvers || actualOversFaced) : actualOversFaced;
 
           // Agar 0 overs hain toh calculation error se bachne ke liye thoda buffer (0.1) rakh lo ya exact oversForNRR rehne do
           if (oversForNRR === 0) oversForNRR = 0.166; // 1 ball at least if they somehow got out on 0 ball
