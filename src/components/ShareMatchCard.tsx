@@ -216,7 +216,25 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
         ctx.fillText(`${i + 1}. ${name}`, 590, 605 + i * 44);
       });
     } else {
-            // LIVE / COMPLETED SCORES LAYOUT
+      // LIVE / COMPLETED SCORES LAYOUT
+      // FIX: previously this block assumed innings1/innings3 always belong to
+      // teamA and innings2/innings4 always belong to teamB, and just printed
+      // match.teamA.name / match.teamB.name next to whatever score happened
+      // to be in innings1 / innings2. If the actual batting order differed
+      // (e.g. teamB batted first), the poster showed the right team names but
+      // the wrong scores next to them. We now always pull the team name from
+      // the innings object itself (inn.teamName), exactly like the WhatsApp
+      // text generator and the in-app preview card already do, so the name
+      // and score can never get mismatched.
+      const isTestMatch = match.matchFormat === 'test' || match.settings?.matchType?.includes('Test');
+
+      const inn1 = match.innings1;
+      const inn2 = match.innings2;
+      const inn3 = match.innings3;
+      const inn4 = match.innings4;
+
+      // Row 1: whichever team's innings1 is (their 1st innings, and their
+      // 2nd innings i.e. innings3 in a test match)
       ctx.fillStyle = '#1e293b';
       ctx.beginPath();
       ctx.roundRect(100, 465, 880, 180, 24);
@@ -225,23 +243,22 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 40px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(match.teamA.name, 140, 555);
-
-      const isTestMatch = match.matchFormat === 'test' || match.settings?.matchType?.includes('Test');
+      ctx.fillText(inn1 ? inn1.teamName : match.teamA.name, 140, 555);
 
       ctx.fillStyle = '#34d399';
       ctx.textAlign = 'right';
       if (isTestMatch) {
         ctx.font = '900 32px monospace';
-        const inn1 = match.innings1 ? `${match.innings1.totalRuns}/${match.innings1.totalWickets}` : '0/0';
-        const inn3 = (match.innings3 && match.currentInningsNumber >= 3) ? `  &  2nd: ${match.innings3.totalRuns}/${match.innings3.totalWickets}` : '';
-        ctx.fillText(`1st: ${inn1}${inn3}`, 940, 555);
+        const inn1Score = inn1 ? `${inn1.totalRuns}/${inn1.totalWickets}` : '0/0';
+        const inn3Score = (inn3 && match.currentInningsNumber >= 3) ? `  &  2nd: ${inn3.totalRuns}/${inn3.totalWickets}` : '';
+        ctx.fillText(`1st: ${inn1Score}${inn3Score}`, 940, 555);
       } else {
         ctx.font = '900 52px monospace';
-        const inn1 = match.innings1;
         ctx.fillText(inn1 ? `${inn1.totalRuns}/${inn1.totalWickets}` : 'Yet to Bat', 940, 555);
       }
 
+      // Row 2: whichever team's innings2 is (their 1st innings, and their
+      // 2nd innings i.e. innings4 in a test match)
       ctx.fillStyle = '#1e293b';
       ctx.beginPath();
       ctx.roundRect(100, 675, 880, 180, 24);
@@ -250,18 +267,17 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
       ctx.fillStyle = '#ffffff';
       ctx.font = '900 40px sans-serif';
       ctx.textAlign = 'left';
-      ctx.fillText(match.teamB.name, 140, 765);
+      ctx.fillText(inn2 ? inn2.teamName : match.teamB.name, 140, 765);
 
       ctx.fillStyle = '#38bdf8';
       ctx.textAlign = 'right';
       if (isTestMatch) {
         ctx.font = '900 32px monospace';
-        const inn2 = match.innings2 ? `${match.innings2.totalRuns}/${match.innings2.totalWickets}` : '0/0';
-        const inn4 = (match.innings4 && match.currentInningsNumber >= 4) ? `  &  2nd: ${match.innings4.totalRuns}/${match.innings4.totalWickets}` : '';
-        ctx.fillText(`1st: ${inn2}${inn4}`, 940, 765);
+        const inn2Score = inn2 ? `${inn2.totalRuns}/${inn2.totalWickets}` : '0/0';
+        const inn4Score = (inn4 && match.currentInningsNumber >= 4) ? `  &  2nd: ${inn4.totalRuns}/${inn4.totalWickets}` : '';
+        ctx.fillText(`1st: ${inn2Score}${inn4Score}`, 940, 765);
       } else {
         ctx.font = '900 52px monospace';
-        const inn2 = match.innings2;
         ctx.fillText(inn2 ? `${inn2.totalRuns}/${inn2.totalWickets}` : 'Yet to Bat', 940, 765);
       }
 
