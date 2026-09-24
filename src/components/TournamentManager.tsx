@@ -918,7 +918,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
             {statsTab === 'runs' && (
               <PlayerStatPanel
-                title="Orange Cap — Most Runs"
+                title="Orange Cap / Turban 🧢/👳‍♂️ - Most Runs
                 subtitle="Leading run-scorers in this tournament"
                 emptyLabel="No batting data recorded yet."
                 rows={mostRunsList}
@@ -934,7 +934,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 
             {statsTab === 'wickets' && (
               <PlayerStatPanel
-                title="Purple Cap — Most Wickets"
+                title="Purple Cap / Turban 🧢/👳‍♂️ - Most Wickets"
+
                 subtitle="Leading wicket-takers in this tournament"
                 emptyLabel="No bowling data recorded yet."
                 rows={mostWicketsList}
