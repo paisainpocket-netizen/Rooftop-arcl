@@ -892,6 +892,7 @@ export default function App() {
 
     const remainingMatches = savedMatches.filter((m) => m.id !== matchId);
     setSavedMatches(remainingMatches);
+        try { localStorage.setItem('arcl_saved_matches_v2', JSON.stringify(remainingMatches)); } catch {}
     cloudDb.deleteMatch(matchId).catch(console.warn);
 
     // Recalculate every player's career + format stats from scratch using only
