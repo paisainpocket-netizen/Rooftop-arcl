@@ -129,27 +129,29 @@ const PlayerStatPanel: React.FC<{
             <tbody className="divide-y divide-slate-800/60">
               {rows.slice(0, 20).map((row, idx) => (
                 <tr key={row.playerId} className="hover:bg-slate-800/40 transition">
-                  <td className="p-3 font-sans flex items-center gap-2.5">
-                    <span
-                      className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                        idx === 0
-                          ? 'bg-amber-400 text-slate-950 font-black'
-                          : idx === 1
-                          ? 'bg-slate-300 text-slate-950 font-black'
-                          : idx === 2
-                          ? 'bg-orange-700/70 text-white font-black'
-                          : 'text-slate-500'
-                      }`}
-                    >
-                      {idx + 1}
-                    </span>
-                    <div
-                      className="w-2.5 h-2.5 rounded-full shrink-0"
-                      style={{ backgroundColor: row.teamColor || '#10b981' }}
-                    />
-                    <div className="min-w-0">
-                      <div className="font-bold text-slate-100 truncate text-xs">{row.playerName}</div>
-                      <div className="text-[10px] text-slate-500 truncate">{row.teamName}</div>
+                  <td className="p-3 font-sans">
+                    <div className="flex items-center gap-2.5">
+                      <span
+                        className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950 font-black'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950 font-black'
+                            : idx === 2
+                            ? 'bg-orange-700/70 text-white font-black'
+                            : 'text-slate-500'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <div
+                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: row.teamColor || '#10b981' }}
+                      />
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-100 truncate text-xs">{row.playerName}</div>
+                        <div className="text-[10px] text-slate-500 truncate">{row.teamName}</div>
+                      </div>
                     </div>
                   </td>
                   {columns.map((col) => (
@@ -199,6 +201,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [tabFilter, setTabFilter] = useState<'my' | 'all'>('all');
   const [selectedTourId, setSelectedTourId] = useState<string>(initialTournamentId || tournaments[0]?.id || '');
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
+  // Phone-only: which points-table row is expanded to show Status / Ties / Form
+  const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialTournamentId) {
@@ -528,7 +532,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* Broadcast Header Hub */}
-      <div className="p-5 sm:p-7 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="p-5 sm:p-7 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 relative">
@@ -547,7 +551,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Tournaments & Standings
           </h2>
-          <p className="text-xs text-slate-400 max-w-xl">
+          <p className="text-xs sm:text-sm text-slate-400 max-w-xl">
             Live points tables, net run rates (NRR), MVP awards, and complete rooftop tournament fixtures.
           </p>
         </div>
@@ -558,23 +562,23 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               onOpenCreateTournament();
               cricketAudio.playClick();
             }}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-orange-500/20 transition cursor-pointer active:scale-95 shrink-0"
+            className="w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-3 lg:py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-sm shadow-lg shadow-orange-500/20 transition cursor-pointer active:scale-95 shrink-0"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>+ Create Tournament</span>
+            <span>Create Tournament</span>
           </button>
         )}
       </div>
 
       {/* Tabs Filter (All vs My Tournaments) */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-950 border border-slate-800">
+        <div className="flex items-center gap-1 p-1 rounded-2xl bg-slate-950 border border-slate-800 max-w-full overflow-x-auto">
           <button
             onClick={() => {
               setTabFilter('all');
               cricketAudio.playClick();
             }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
               tabFilter === 'all'
                 ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-md'
                 : 'text-slate-400 hover:text-white'
@@ -590,7 +594,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 setTabFilter('my');
                 cricketAudio.playClick();
               }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 ${
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                 tabFilter === 'my'
                   ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-md'
                   : 'text-slate-400 hover:text-white'
@@ -619,7 +623,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   setSelectedTourId(t.id);
                   cricketAudio.playClick();
                 }}
-                className={`px-3.5 py-2 rounded-2xl border text-xs font-black whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
+                className={`px-3.5 py-2.5 rounded-2xl border text-xs sm:text-sm font-black whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
                   isSelected
                     ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
                     : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
@@ -648,7 +652,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               </div>
             )}
 
-            <div className="p-5 sm:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="p-5 sm:p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <div className="space-y-1.5">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 uppercase">
@@ -677,7 +681,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   <span>🏆 {selectedTournament.trophyName || selectedTournament.name}</span>
                 </h3>
 
-                <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap pt-0.5">
+                <div className="flex items-center gap-x-3 gap-y-1 text-xs sm:text-sm text-slate-400 flex-wrap pt-0.5">
                   <span>Format: <strong className="text-slate-200">{selectedTournament.format}</strong></span>
                   <span>•</span>
                   <span>Overs: <strong className="text-amber-400">{selectedTournament.oversPerMatch} Ov</strong></span>
@@ -693,18 +697,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   <>
                     <button
                       onClick={() => handleOpenEditModal(selectedTournament)}
-                      className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 transition cursor-pointer"
+                      className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-sm flex items-center justify-center gap-1.5 border border-slate-700 transition cursor-pointer"
                     >
-                      <Edit3 className="w-3.5 h-3.5 text-amber-400" />
+                      <Edit3 className="w-4 h-4 text-amber-400" />
                       <span>Edit</span>
                     </button>
 
                     <button
                       onClick={() => onAddNewMatchForTournament(selectedTournament.id)}
-                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-sm flex items-center justify-center gap-1.5 shadow-md shadow-orange-500/20 cursor-pointer active:scale-95"
                     >
                       <Plus className="w-4 h-4 stroke-[3]" />
-                      <span>+ Match</span>
+                      <span>Match</span>
                     </button>
                   </>
                 ) : (
@@ -721,14 +725,14 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             <div className="p-4 sm:p-5 bg-slate-950/80 border-b border-slate-800">
               <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
                     <BarChart3 className="w-4 h-4" />
                   </div>
                   <div>
                     <span className="font-black text-sm uppercase tracking-wider text-white">
                       Tournament Leaderboard & Stats
                     </span>
-                    <span className="text-[10px] text-slate-400 block">
+                    <span className="text-[11px] text-slate-400 block">
                       Live standings across {selectedTournament.teams.length} teams
                     </span>
                   </div>
@@ -737,7 +741,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 {canEditSelectedTournament && statsTab === 'points' && (
                   <button
                     onClick={() => setIsStatusManagerOpen((prev) => !prev)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer border ${
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border ${
                       isStatusManagerOpen
                         ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
                         : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
@@ -758,7 +762,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       cricketAudio.playClick();
                       setStatsTab(tab.key);
                     }}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer border whitespace-nowrap ${
+                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border whitespace-nowrap ${
                       statsTab === tab.key
                         ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 border-amber-400 shadow-md'
                         : 'bg-slate-900 border-slate-800 text-slate-300 hover:text-white'
@@ -771,21 +775,23 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               </div>
             </div>
 
-            {/* Tab 1: Points Table */}
+            {/* Tab 1: Points Table
+                Phone: Team, P, W, L, NRR, PTS (big text). Tap the arrow on a row to see Status / Ties / Form.
+                Large screens (lg+): full table with every column. */}
             {statsTab === 'points' && (
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs font-mono">
-                  <thead className="bg-slate-950 text-slate-400 uppercase text-[10px] font-sans border-b border-slate-800">
+                <table className="w-full text-left text-sm lg:text-xs font-mono">
+                  <thead className="bg-slate-950 text-slate-400 uppercase text-[11px] lg:text-[10px] font-sans border-b border-slate-800">
                     <tr>
-                      <th className="p-3">Pos & Team</th>
-                      <th className="p-3 text-center">Status</th>
-                      <th className="p-3 text-center">P</th>
-                      <th className="p-3 text-center">W</th>
-                      <th className="p-3 text-center">L</th>
-                      <th className="p-3 text-center">T</th>
-                      <th className="p-3 text-center">NRR</th>
-                      <th className="p-3 text-center">Form</th>
-                      <th className="p-3 text-right font-black">PTS</th>
+                      <th className="p-2.5 lg:p-3">Team</th>
+                      <th className="hidden lg:table-cell p-3 text-center">Status</th>
+                      <th className="p-2.5 lg:p-3 text-center">P</th>
+                      <th className="p-2.5 lg:p-3 text-center">W</th>
+                      <th className="p-2.5 lg:p-3 text-center">L</th>
+                      <th className="hidden lg:table-cell p-3 text-center">T</th>
+                      <th className="p-2.5 lg:p-3 text-center">NRR</th>
+                      <th className="hidden lg:table-cell p-3 text-center">Form</th>
+                      <th className="p-2.5 lg:p-3 text-right font-black">PTS</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -794,10 +800,11 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       const currentStatus: TeamTournamentStatus =
                         (selectedTournament?.teamStatuses && row?.teamId && selectedTournament.teamStatuses[row.teamId]) || 'none';
                       const statusInfo = STATUS_CONFIG[currentStatus] || STATUS_CONFIG['none'];
+                      const isExpanded = expandedTeamId === row.teamId;
 
                       return (
+                        <React.Fragment key={row.teamId}>
                         <tr
-                          key={row.teamId}
                           className={`hover:bg-slate-800/40 transition ${
                             currentStatus === 'champion'
                               ? 'bg-amber-950/20'
@@ -814,34 +821,55 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                               : ''
                           }`}
                         >
-                          <td 
-                            onClick={() => {
-                              if (matchedTeam) {
-                                cricketAudio.playClick();
-                                setInspectedTeam(matchedTeam);
-                              }
-                            }}
-                            className="p-3 font-sans flex items-center gap-2.5 cursor-pointer group"
-                          >
-                            <span className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                              idx === 0
-                                ? 'bg-amber-400 text-slate-950 font-black'
-                                : idx === 1
-                                ? 'bg-slate-300 text-slate-950 font-black'
-                                : 'text-slate-500'
-                            }`}>
-                              {idx + 1}
-                            </span>
-                            <div
-                              className="w-2.5 h-2.5 rounded-full shrink-0"
-                              style={{ backgroundColor: row.teamColor || '#10b981' }}
-                            />
-                            <span className="font-bold text-slate-100 group-hover:text-amber-400 transition truncate max-w-[130px] sm:max-w-[180px]">
-                              {row.teamName}
-                            </span>
+                          <td className="p-2.5 lg:p-3 font-sans">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className={`w-6 h-6 lg:w-5 lg:h-5 rounded-full flex items-center justify-center font-bold text-[11px] lg:text-[10px] shrink-0 ${
+                                idx === 0
+                                  ? 'bg-amber-400 text-slate-950 font-black'
+                                  : idx === 1
+                                  ? 'bg-slate-300 text-slate-950 font-black'
+                                  : 'text-slate-500'
+                              }`}>
+                                {idx + 1}
+                              </span>
+                              <div
+                                onClick={() => {
+                                  if (matchedTeam) {
+                                    cricketAudio.playClick();
+                                    setInspectedTeam(matchedTeam);
+                                  }
+                                }}
+                                className="flex items-center gap-2 min-w-0 cursor-pointer group"
+                              >
+                                <div
+                                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                                  style={{ backgroundColor: row.teamColor || '#10b981' }}
+                                />
+                                <span className="font-bold text-slate-100 group-hover:text-amber-400 transition truncate max-w-[110px] sm:max-w-[200px] lg:max-w-[180px]">
+                                  {row.teamName}
+                                </span>
+                              </div>
+                              {/* Phone only: tiny status letter + expand arrow */}
+                              {currentStatus !== 'none' && (
+                                <span className={`lg:hidden shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-black border ${statusInfo.badgePill}`}>
+                                  {statusInfo.badgeShort === '🏆 WINNER' ? '🏆' : statusInfo.badgeShort}
+                                </span>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  cricketAudio.playClick();
+                                  setExpandedTeamId(isExpanded ? null : row.teamId);
+                                }}
+                                className="lg:hidden shrink-0 p-1 rounded-lg text-slate-400 hover:text-white"
+                                title="Show status, ties and form"
+                              >
+                                <ChevronDown className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                            </div>
                           </td>
 
-                          <td className="p-3 text-center font-sans">
+                          <td className="hidden lg:table-cell p-3 text-center font-sans">
                             {canEditSelectedTournament ? (
                               <button
                                 type="button"
@@ -864,14 +892,14 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             )}
                           </td>
 
-                          <td className="p-3 text-center text-slate-300">{row.played}</td>
-                          <td className="p-3 text-center text-emerald-400 font-bold">{row.won}</td>
-                          <td className="p-3 text-center text-rose-400 font-bold">{row.lost}</td>
-                          <td className="p-3 text-center text-amber-400">{row.tied}</td>
-                          <td className={`p-3 text-center font-bold ${row.nrr >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                          <td className="p-2.5 lg:p-3 text-center text-slate-300">{row.played}</td>
+                          <td className="p-2.5 lg:p-3 text-center text-emerald-400 font-bold">{row.won}</td>
+                          <td className="p-2.5 lg:p-3 text-center text-rose-400 font-bold">{row.lost}</td>
+                          <td className="hidden lg:table-cell p-3 text-center text-amber-400">{row.tied}</td>
+                          <td className={`p-2.5 lg:p-3 text-center font-bold ${row.nrr >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {row.nrr > 0 ? `+${row.nrr}` : row.nrr}
                           </td>
-                          <td className="p-3 text-center font-sans">
+                          <td className="hidden lg:table-cell p-3 text-center font-sans">
                             <div className="flex items-center justify-center gap-0.5">
                               {row.form.slice(0, 5).map((f, fIdx) => (
                                 <span
@@ -890,10 +918,67 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                               {row.form.length === 0 && <span className="text-slate-600">-</span>}
                             </div>
                           </td>
-                          <td className="p-3 text-right font-black text-sm text-amber-400">
+                          <td className="p-2.5 lg:p-3 text-right font-black text-base lg:text-sm text-amber-400">
                             {row.points}
                           </td>
                         </tr>
+
+                        {/* Phone only: expanded details row */}
+                        {isExpanded && (
+                          <tr className="lg:hidden bg-slate-950/70">
+                            <td colSpan={6} className="px-3 py-3 font-sans">
+                              <div className="flex items-center justify-between gap-3 flex-wrap">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] uppercase font-bold text-slate-500">Form</span>
+                                  <div className="flex items-center gap-1">
+                                    {row.form.slice(0, 5).map((f, fIdx) => (
+                                      <span
+                                        key={fIdx}
+                                        className={`w-5 h-5 rounded text-[10px] font-black flex items-center justify-center ${
+                                          f === 'W'
+                                            ? 'bg-emerald-600 text-white'
+                                            : f === 'L'
+                                            ? 'bg-rose-600 text-white'
+                                            : 'bg-amber-500 text-slate-950'
+                                        }`}
+                                      >
+                                        {f}
+                                      </span>
+                                    ))}
+                                    {row.form.length === 0 && <span className="text-slate-600 text-sm">-</span>}
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[11px] uppercase font-bold text-slate-500">Tied</span>
+                                  <span className="text-sm font-black text-amber-400">{row.tied}</span>
+                                </div>
+
+                                {canEditSelectedTournament ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (matchedTeam) {
+                                        cricketAudio.playClick();
+                                        setSelectedTeamForStatusModal(matchedTeam);
+                                      }
+                                    }}
+                                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black border transition cursor-pointer ${statusInfo.badgePill}`}
+                                  >
+                                    <span>{statusInfo.icon}</span>
+                                    <span>{currentStatus === 'none' ? 'Set Status' : statusInfo.label}</span>
+                                  </button>
+                                ) : (
+                                  <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black border ${statusInfo.badgePill}`}>
+                                    <span>{statusInfo.icon}</span>
+                                    <span>{statusInfo.label}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                        </React.Fragment>
                       );
                     })}
                   </tbody>
@@ -1034,7 +1119,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 <span className="text-[10px] text-slate-400">Tap status to update instantly</span>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
                 {(selectedTournament.teams || []).map((tId) => {
                   const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
                   if (!teamObj?.id) return null;
@@ -1046,7 +1131,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     <div key={teamObj.id} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: teamObj.color || '#10b981' }} />
-                        <span className="font-bold text-xs text-white truncate">{teamObj.name}</span>
+                        <span className="font-bold text-sm text-white truncate">{teamObj.name}</span>
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
@@ -1054,13 +1139,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                           <button
                             key={st}
                             onClick={() => handleUpdateTeamStatus(teamObj.id, currentStatus === st ? 'none' : st)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-black transition cursor-pointer ${
+                            className={`px-2 py-1 rounded text-[11px] font-black transition cursor-pointer ${
                               currentStatus === st
                                 ? STATUS_CONFIG[st].badgePill
                                 : 'bg-slate-900 text-slate-500 hover:text-slate-300'
                             }`}
                           >
-                            {STATUS_CONFIG[st].badgeShort}
+                            {STATUS_CONFIG[st].badgeShort === '🏆 WINNER' ? '🏆' : STATUS_CONFIG[st].badgeShort}
                           </button>
                         ))}
                       </div>
@@ -1072,11 +1157,11 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           )}
 
           {/* Section: Tournament Fixtures */}
-          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-xl space-y-4">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900 p-4 sm:p-5 shadow-xl space-y-4">
             <div className="flex items-center justify-between">
-              <span className="font-black text-xs uppercase tracking-wider text-slate-300 flex items-center gap-2">
+              <span className="font-black text-xs sm:text-sm uppercase tracking-wider text-slate-300 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-cyan-400" />
-                <span>Tournament Fixtures & Matches ({tournamentMatches.length})</span>
+                <span>Fixtures & Matches ({tournamentMatches.length})</span>
               </span>
             </div>
 
@@ -1085,7 +1170,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 No matches scheduled for this tournament yet.
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                 {tournamentMatches.map((m) => {
                   const isCreator = Boolean(
                     loggedInPlayer &&
@@ -1102,24 +1187,24 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   return (
                     <div
                       key={m.id}
-                      className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800/90 flex items-center justify-between gap-2"
+                      className="p-4 rounded-2xl bg-slate-950 border border-slate-800/90 flex items-center justify-between gap-3"
                     >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
+                      <div className="min-w-0 flex-1 space-y-1.5">
+                        <div>
                           {m.status === 'live' ? (
-                            <span className="px-1.5 py-0.2 rounded bg-rose-500 text-white text-[9px] font-black uppercase animate-pulse">
+                            <span className="px-1.5 py-0.5 rounded bg-rose-500 text-white text-[10px] font-black uppercase animate-pulse">
                               LIVE
                             </span>
                           ) : (
-                            <span className="text-[10px] text-slate-500 font-mono">
+                            <span className="text-[11px] text-slate-500 font-mono">
                               {m.date || 'Fixtures'}
                             </span>
                           )}
-                          <span className="font-black text-xs text-white truncate">
-                            {m.teamA.name} vs {m.teamB.name}
-                          </span>
                         </div>
-                        <div className="text-[11px] text-slate-400 truncate">
+                        <div className="font-black text-sm sm:text-base text-white leading-snug break-words">
+                          {m.teamA.name} <span className="text-slate-500 font-bold">vs</span> {m.teamB.name}
+                        </div>
+                        <div className="text-xs sm:text-sm text-slate-400 leading-snug">
                           {m.status === 'live' ? (
                             <span className="text-emerald-400 font-bold">Match in progress</span>
                           ) : m.result ? (
@@ -1130,18 +1215,18 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={() => onOpenScorecard(m)}
-                          className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+                          className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
                           title="View Scorecard"
                         >
-                          <FileText className="w-3.5 h-3.5 text-cyan-400" />
+                          <FileText className="w-4 h-4 text-cyan-400" />
                         </button>
 
                         <button
                           onClick={() => onSelectMatchToScore(m)}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition cursor-pointer ${
+                          className={`px-4 py-2.5 rounded-xl text-sm font-bold flex items-center gap-1.5 transition cursor-pointer ${
                             m.status === 'completed'
                               ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                               : canScoreThisMatch
@@ -1153,12 +1238,12 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                             <span>Card</span>
                           ) : canScoreThisMatch ? (
                             <>
-                              <Play className="w-3 h-3 fill-current" />
+                              <Play className="w-3.5 h-3.5 fill-current" />
                               <span>Score</span>
                             </>
                           ) : (
                             <>
-                              <Eye className="w-3 h-3" />
+                              <Eye className="w-3.5 h-3.5" />
                               <span>Watch</span>
                             </>
                           )}
