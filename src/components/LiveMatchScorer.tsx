@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+riimport React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Match,
   BallOutcome,
@@ -2691,7 +2691,6 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       })()
     )}
   </div>
-)}
       {/* TAB 6: SQUADS */}
       {centreTab === 'squads' && (
         <div className="space-y-4">
@@ -4018,4 +4017,4 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       )}
     </div>
   );
-};
+      }
