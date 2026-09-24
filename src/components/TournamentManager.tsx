@@ -933,20 +933,21 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             )}
 
             {statsTab === 'wickets' && (
-              <PlayerStatPanel
-                title="Purple Cap / Turban 🧢/👳‍♂️ - Most Wickets"
+                        <PlayerStatPanel
+            title="Purple Cap / Turban 🧢/ 👳 - Most Wickets"
+            subtitle="Leading wicket-takers in this tournament"
+            emptyLabel="No bowling data recorded yet."
+            rows={mostWicketsList}
+            columns={[
+              { header: 'Wkts', render: (p) => <span className="text-amber-400 font-black">{p.wickets}</span> },
+              { header: 'Overs', render: (p) => <span>{p.oversBowled}</span> },
+              { header: 'Runs', render: (p) => <span>{p.runsConceded}</span> },
+              { header: 'Econ', render: (p) => <span>{p.economy.toFixed(2)}</span> },
+              { header: 'Best', render: (p) => <span>{p.bestBowlingWickets}/{p.bestBowlingRuns}</span> }
+            ]}
+          />
 
-                subtitle="Leading wicket-takers in this tournament"
-                emptyLabel="No bowling data recorded yet."
-                rows={mostWicketsList}
-                columns={[
-                  { header: 'Wkts', render: (p) => <span className="text-amber-400 font-black">{p.wickets}</span> },
-                  { header: 'Overs', render: (p) => <span>{p.oversBowled}</span> },
-                  { header: 'Runs', render: (p) => <span>{p.runsConceded}</span> },
-                  { header: 'Econ', render: (p) => <span>{p.economy.toFixed(2)}</span> },
-                  { header: 'Best', render: (p) => <span>{p.bestBowlingWickets ? `${p.bestBowlingWickets}/${p.bestBowlingRuns}` : '-'}</span> },
 
-              />
             )}
 
             {statsTab === 'fielding' && (
