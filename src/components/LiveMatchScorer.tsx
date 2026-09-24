@@ -2686,11 +2686,12 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 </div>
               ))}
             </div>
-          );      
-          </div>
-        </div>
-      )}
-
+          );
+        });
+      })()
+    )}
+  </div>
+)}
       {/* TAB 6: SQUADS */}
       {centreTab === 'squads' && (
         <div className="space-y-4">
