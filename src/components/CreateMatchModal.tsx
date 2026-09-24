@@ -34,7 +34,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   onAddPlayerToTeam,
   loggedInPlayer = null,
 }) => {
-  const [matchName, setMatchName] = useState('Match 21 ARCL Maha Muqabla');
+  const [matchName, setMatchName] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState(initialTournamentId || '');
   const [teamAId, setTeamAId] = useState('');
   const [teamBId, setTeamBId] = useState('');
@@ -587,59 +587,70 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             )}
           </div>
 
-          <div>
+                    {/* 1. MATCH TITLE (Clean Design) */}
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 shadow-inner focus-within:border-emerald-500 focus-within:bg-slate-900 transition-all relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50"></div>
+            <label className="text-[10px] font-black uppercase tracking-wider text-emerald-500/80 block text-center mb-0.5">
+              Match Title / Number
+            </label>
             <input
               type="text"
               value={matchName}
               onChange={(e) => setMatchName(e.target.value)}
-              placeholder="Match 21 Arcl Maha Maquabla"
-              className="w-full text-center py-2.5 bg-transparent border-b border-slate-700 text-sm font-bold text-white focus:outline-none focus:border-emerald-400"
+              placeholder="e.g. Final Match or Match 1"
+              className="w-full bg-transparent text-center text-[15px] font-black text-white placeholder-slate-600 focus:outline-none"
             />
           </div>
 
+          {/* 2. DATE & TIME (Clean Design) */}
           <div className="grid grid-cols-2 gap-3">
-            <div className="relative">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2 focus-within:border-emerald-500 transition-all flex flex-col items-center">
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> Date
+              </label>
               <input
                 type="date"
                 value={matchDate}
                 onChange={(e) => setMatchDate(e.target.value)}
-                className="w-full py-2 bg-transparent border-b border-slate-700 text-xs font-bold text-center text-white focus:outline-none focus:border-emerald-400"
+                className="w-full bg-transparent text-center text-xs font-bold text-white focus:outline-none mt-1"
               />
             </div>
-            <div className="relative">
+            <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2 focus-within:border-emerald-500 transition-all flex flex-col items-center">
+              <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                <Clock className="w-3 h-3" /> Time
+              </label>
               <input
                 type="time"
                 value={matchTime}
                 onChange={(e) => setMatchTime(e.target.value)}
-                className="w-full py-2 bg-transparent border-b border-slate-700 text-xs font-bold text-center text-white focus:outline-none focus:border-emerald-400"
+                className="w-full bg-transparent text-center text-xs font-bold text-white focus:outline-none mt-1"
               />
             </div>
           </div>
 
+          {/* 3. FORMAT SUMMARY BOX */}
           <div
             onClick={() => setShowFormatModal(true)}
-            className="py-3 px-4 rounded-xl bg-slate-950/80 border border-slate-800 text-center cursor-pointer hover:border-emerald-500/50 transition"
+            className="py-3 px-4 rounded-2xl bg-slate-900 border border-slate-700 text-center cursor-pointer hover:border-emerald-500 hover:bg-slate-800 transition-all shadow-md flex flex-col items-center justify-center gap-1"
           >
-            <p className="text-sm font-black text-white">
-              {selectedFormat} • {playersPerSide} Players/Side • {totalWickets} Wkts ({totalOvers} Overs)
+            <p className="text-sm font-black text-white flex items-center justify-center gap-2">
+              <Zap className="w-4 h-4 text-amber-400" />
+              {selectedFormat} • {playersPerSide} Players • {totalWickets} Wkts ({totalOvers} Ov)
             </p>
-            <span className="text-[10px] text-emerald-400 font-bold">Tap to change format, players per side, or overs</span>
+            <span className="text-[10px] text-emerald-400/80 font-bold">Tap to change format settings</span>
           </div>
 
-          <div>
-            <input
+          {/* 4. SCORER NAME INPUT */}
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 focus-within:border-emerald-500 transition-all">
+             <input
               type="text"
               value={scorerName}
               onChange={(e) => setScorerName(e.target.value)}
-              placeholder="Select Scorer (Optional)"
-              className="w-full text-center py-2 bg-transparent border-b border-slate-700 text-xs text-slate-300 placeholder-slate-500 focus:outline-none focus:border-emerald-400"
+              placeholder="Scorer Name (Optional)"
+              className="w-full bg-transparent text-center text-xs font-bold text-white placeholder-slate-600 focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
-            <span className="font-bold">Club Season/Year* - {clubSeason}</span>
-            <span className="text-base" title="Tennis Heavy Ball">🎾</span>
-          </div>
 
           <div className="grid grid-cols-2 gap-3 pt-3">
             <button
