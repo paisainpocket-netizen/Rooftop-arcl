@@ -97,7 +97,9 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   onOpenLoginModal,
   onBackToFeed,
 }) => {
-  const [centreTab, setCentreTab] = useState<'scoring' | 'scorecard' | 'wheel' | 'stats' | 'superstars' | 'balls' | 'squads'>('scoring');
+  const [centreTab, setCentreTab] = useState<'scoring' | 'scorecard' | 'wheel' | 'stats' | 'superstars' | 'balls' | 'squads'>(
+    () => (match.status === 'completed' ? 'scorecard' : 'scoring')
+  );
 
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => cricketAudio.getIsVoiceEnabled());
   const [commentaryLang, setCommentaryLang] = useState<'pa' | 'hi' | 'en'>(() => cricketAudio.getCommentaryLanguage());
@@ -143,6 +145,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   const [viewInningsNum, setViewInningsNum] = useState<number>(match.currentInningsNumber || 1);
 
   const [isDelegateModalOpen, setIsDelegateModalOpen] = useState(false);
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [delegateSearchQuery, setDelegateSearchQuery] = useState('');
   const [delegateSuccessMsg, setDelegateSuccessMsg] = useState<string | null>(null);
   const [delegateErrorMsg, setDelegateErrorMsg] = useState<string | null>(null);
@@ -1519,7 +1522,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
             </button>
           )}
 
-          {canScore && (
+          {canScore && !isMatchFinished && (
             <button
               onClick={handleOpenEndMatchModal}
               title="Declare Result or Finish Match"
@@ -1538,18 +1541,38 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
             <Share2 className="w-3.5 h-3.5 text-cyan-400" />
           </button>
 
+          {/* More-options menu: Delete now lives behind a tap here instead of
+              sitting right next to Share, so it can't be hit by accident. */}
           {canDelete && (
-            <button
-              onClick={() => {
-                if (window.confirm(`Are you sure you want to delete "${match.name}"? Only you (creator) can perform this.`)) {
-                  onDeleteMatch();
-                }
-              }}
-              title="Delete Match (Creator Only)"
-              className="p-2 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/50 text-rose-400 text-xs cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setIsHeaderMenuOpen((prev) => !prev)}
+                title="More Options"
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5 text-slate-300" />
+              </button>
+
+              {isHeaderMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setIsHeaderMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 w-48 rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-40 overflow-hidden py-1">
+                    <button
+                      onClick={() => {
+                        setIsHeaderMenuOpen(false);
+                        if (window.confirm(`Are you sure you want to delete "${match.name}"? Only you (creator) can perform this.`)) {
+                          onDeleteMatch();
+                        }
+                      }}
+                      className="w-full text-left px-3.5 py-2.5 text-xs font-bold text-rose-400 hover:bg-rose-950/40 flex items-center gap-2"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Match</span>
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1761,8 +1784,10 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
               </div>
             </div>
 
-            {/* Match Stats Row */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono">
+            {/* Match Stats Row — CRR/RRR and Partnership only make sense
+                while the match is live, so a completed match just shows the
+                final Extras and Overs. */}
+            <div className={`grid grid-cols-2 gap-2 text-xs font-mono ${isMatchFinished ? '' : 'sm:grid-cols-4'}`}>
               <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
                 <span className="text-[9px] uppercase font-sans text-slate-400 font-bold block">Extras</span>
                 <span className="font-black text-amber-400 text-sm">
@@ -1780,22 +1805,26 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 </span>
               </div>
 
-              <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-                <span className="text-[9px] uppercase font-sans text-slate-400 font-bold block">CRR / RRR</span>
-                <span className="font-black text-emerald-400 text-sm">
-                  {currentRunRate}
-                  {currentInningsNum === 2 && targetRuns && (
-                    <span className="text-purple-400 ml-1">/ {requiredRunRate}</span>
-                  )}
-                </span>
-              </div>
+              {!isMatchFinished && (
+                <>
+                  <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
+                    <span className="text-[9px] uppercase font-sans text-slate-400 font-bold block">CRR / RRR</span>
+                    <span className="font-black text-emerald-400 text-sm">
+                      {currentRunRate}
+                      {currentInningsNum === 2 && targetRuns && (
+                        <span className="text-purple-400 ml-1">/ {requiredRunRate}</span>
+                      )}
+                    </span>
+                  </div>
 
-              <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
-                <span className="text-[9px] uppercase font-sans text-slate-400 font-bold block">Partnership</span>
-                <span className="font-black text-cyan-400 text-sm">
-                  {currentPartnershipRuns}({currentPartnershipBalls})
-                </span>
-              </div>
+                  <div className="p-2.5 rounded-2xl bg-slate-950 border border-slate-800">
+                    <span className="text-[9px] uppercase font-sans text-slate-400 font-bold block">Partnership</span>
+                    <span className="font-black text-cyan-400 text-sm">
+                      {currentPartnershipRuns}({currentPartnershipBalls})
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Batsmen Table (Point 4: Clean state if all out) */}
@@ -1805,7 +1834,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                   <User className="w-3.5 h-3.5 text-amber-400" />
                   <span>Batsmen</span>
                 </span>
-                {canScore && !isTeamAllOut && (
+                {canScore && !isTeamAllOut && !isMatchFinished && (
                   <button
                     onClick={() => {
                       setBatsmanModalRole('striker');
@@ -1842,9 +1871,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                           <td className="p-2.5 font-sans flex items-center gap-1 text-white">
                             <span className="text-amber-400 font-black">*</span>
                             <span className="truncate max-w-[120px]">{striker?.name || 'Striker'}</span>
-                            <span className="px-1 py-0.2 rounded bg-amber-400 text-slate-950 text-[8px] font-black uppercase ml-1">
-                              Strike
-                            </span>
+                            {!isMatchFinished && (
+                              <span className="px-1 py-0.2 rounded bg-amber-400 text-slate-950 text-[8px] font-black uppercase ml-1">
+                                Strike
+                              </span>
+                            )}
                           </td>
                           <td className="p-2.5 text-right font-black text-amber-400">{strikerStats.runs}</td>
                           <td className="p-2.5 text-right text-slate-300">{strikerStats.balls}</td>
@@ -1876,7 +1907,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                   <User className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Bowler</span>
                 </span>
-                {canScore && !isTeamAllOut && (
+                {canScore && !isTeamAllOut && !isMatchFinished && (
                   <button
                     onClick={() => setIsBowlerModalOpen(true)}
                     className="text-[10px] text-cyan-400 hover:underline font-bold cursor-pointer"
@@ -1961,7 +1992,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 )}
               </div>
 
-              {canScore && !isTeamAllOut && (
+              {canScore && !isTeamAllOut && !isMatchFinished && (
                 <button
                   onClick={handleSwapStrike}
                   className="flex-shrink-0 px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-black flex items-center gap-1 cursor-pointer"
