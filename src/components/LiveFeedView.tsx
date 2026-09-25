@@ -27,6 +27,71 @@ interface LiveFeedViewProps {
   isDarkMode?: boolean;
 }
 
+// Recent Match Results cards were pairing "Team A" with innings1 and
+// "Team B" with innings2 unconditionally. innings1 actually belongs to
+// whichever team batted first (decided by the toss), so whenever Team B
+// won the toss and batted first, the two scores showed up swapped onto
+// the wrong team names. This looks up each team's innings by teamId
+// instead of by position, and — for Test matches with 2 innings per
+// side — adds both of that team's innings together for a fair total,
+// using the most recent of their innings for the "wickets" count.
+const getTeamScoreForCard = (m: Match, teamId: string): { runs: number; wickets: number } => {
+  const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
+    (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId
+  );
+  if (allInnings.length === 0) return { runs: 0, wickets: 0 };
+
+// Overs faced string for the Recent Match Results card, e.g. "13.5". For a
+// Test match (2 innings per side) this shows the most recent innings' overs
+// rather than trying to add two over-counts together. Returns null when the
+// team never batted (shouldn't happen for a completed match, but keeps the
+// card from showing a stray "(0.0)").
+const getTeamOversForCard = (m: Match, teamId: string): string | null => {
+  const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
+    (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId
+  );
+  if (allInnings.length === 0) return null;
+  const latest = allInnings[allInnings.length - 1];
+  return `${latest.oversCompleted || 0}.${latest.ballsInCurrentOver || 0}`;
+};
+
+
+// Simple league-stage leader for a tournament preview card: 2 pts per win,
+// tie-broken by wins. This is intentionally lighter than the full points
+// table (no NRR) since it's only used for a one-line "leading" label — all
+// computed from matches already loaded, no extra Firebase reads.
+const getTournamentLeader = (
+  tourMatches: Match[],
+  teams: Team[]
+): { name: string; color: string } | null => {
+  const pointsMap: { [teamId: string]: { points: number; wins: number; name: string; color: string } } = {};
+  tourMatches.forEach((m) => {
+    if (m.status !== 'completed' || !m.result || (m.matchStage && m.matchStage !== 'league')) return;
+    const teamA = m.teamA;
+    const teamB = m.teamB;
+    [teamA, teamB].forEach((t) => {
+      if (t?.id && !pointsMap[t.id]) {
+        pointsMap[t.id] = { points: 0, wins: 0, name: t.name, color: t.color || '#10b981' };
+      }
+    });
+    if (m.result.winnerTeamId && pointsMap[m.result.winnerTeamId]) {
+      pointsMap[m.result.winnerTeamId].points += 2;
+      pointsMap[m.result.winnerTeamId].wins += 1;
+    } else if (m.result.isTie) {
+      if (teamA?.id && pointsMap[teamA.id]) pointsMap[teamA.id].points += 1;
+      if (teamB?.id && pointsMap[teamB.id]) pointsMap[teamB.id].points += 1;
+    }
+  });
+  const rows = Object.values(pointsMap).sort((a, b) => (b.points - a.points) || (b.wins - a.wins));
+  if (rows.length === 0 || rows[0].points === 0) return null;
+  return { name: rows[0].name, color: rows[0].color };
+};
+
+  const totalRuns = allInnings.reduce((sum, inn) => sum + (inn.totalRuns || 0), 0);
+  const latestInnings = allInnings[allInnings.length - 1];
+  return { runs: totalRuns, wickets: latestInnings.totalWickets || 0 };
+};
+
 export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   currentMatch = null,
   savedMatches = [],
@@ -301,6 +366,27 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               const target = currentInnNum === 2 ? (m.innings1?.totalRuns || 0) + 1 : null;
               const ballsRemaining = Math.max(0, m.totalOvers * 6 - ((currentInn?.oversCompleted || 0) * 6 + (currentInn?.ballsInCurrentOver || 0)));
               const runsNeeded = target ? Math.max(0, target - (currentInn?.totalRuns || 0)) : 0;
+              // Required run rate: only meaningful while chasing (innings 2) with balls still left.
+              const rrr = target && ballsRemaining > 0 ? (runsNeeded / (ballsRemaining / 6)).toFixed(2) : null;
+              // Overs-completed progress bar — purely a % of m.totalOvers, no extra data needed.
+              const oversProgressPct = m.totalOvers > 0 ? Math.min(100, (totalOvers / m.totalOvers) * 100) : 0;
+
+              // Current partnership: runs & legal balls since the last fall of wicket
+              // (or since the innings started, if no wicket has fallen yet). Derived
+              // entirely from data already on the match object — fallOfWickets and
+              // the ball-by-ball list — so this costs nothing extra to compute.
+              const fallOfWickets = currentInn?.fallOfWickets || [];
+              const lastWicketScore = fallOfWickets.length > 0 ? fallOfWickets[fallOfWickets.length - 1].score : 0;
+              const partnershipRuns = Math.max(0, (currentInn?.totalRuns || 0) - lastWicketScore);
+              const partnershipBalls = (() => {
+                const balls = currentInn?.balls || [];
+                let lastWicketIdx = -1;
+                for (let i = balls.length - 1; i >= 0; i--) {
+                  if (balls[i].isWicket) { lastWicketIdx = i; break; }
+                }
+                const sinceWicket = lastWicketIdx === -1 ? balls : balls.slice(lastWicketIdx + 1);
+                return sinceWicket.filter((b) => b.isLegalDelivery).length;
+              })();
 
               const recentBalls = [...(currentInn?.balls || [])].slice(-6);
               const isActionOpen = openActionMatchId === m.id;
@@ -405,6 +491,32 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                           </span>
                         )}
                       </div>
+
+                      {/* Overs progress bar */}
+                      <div className="pt-0.5">
+                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-500 transition-all"
+                            style={{ width: `${oversProgressPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* RRR — only shown while chasing */}
+                      {currentInnNum === 2 && target && rrr && (
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span>CRR: <strong className="text-slate-200 font-mono">{crr}</strong></span>
+                          <span>RRR: <strong className={`font-mono ${Number(rrr) > Number(crr) ? 'text-rose-400' : 'text-emerald-400'}`}>{rrr}</strong></span>
+                        </div>
+                      )}
+
+                      {/* Current partnership */}
+                      {(strikerStat || nonStrikerStat) && (
+                        <div className="text-[11px] text-slate-400 pt-0.5 border-t border-slate-800/60">
+                          Partnership: <strong className="text-amber-300 font-mono">{partnershipRuns}</strong>
+                          <span className="text-slate-500"> ({partnershipBalls} balls)</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Active Pitch Snapshot */}
@@ -521,6 +633,15 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
             const liveTourMatches = tourMatches.filter((m) => m.status === 'live');
             const completedTourMatches = tourMatches.filter((m) => m.status === 'completed');
 
+            const champion = teams.find(
+              (t) => t.id && tour.teamStatuses?.[t.id] === 'champion'
+            );
+            const leader = !champion ? getTournamentLeader(tourMatches, teams) : null;
+            const hasStarted = tourMatches.length > 0;
+            const progressPct = tourMatches.length > 0
+              ? Math.min(100, (completedTourMatches.length / tourMatches.length) * 100)
+              : 0;
+
             return (
               <div
                 key={tour.id}
@@ -528,17 +649,32 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                   handleTournaments();
                   cricketAudio.playClick();
                 }}
-                className="p-4 rounded-3xl border border-slate-800 bg-slate-900/90 shadow-lg hover:border-amber-500/40 cursor-pointer transition text-white"
+                className={`p-4 rounded-3xl border shadow-lg hover:border-amber-500/40 cursor-pointer transition ${
+                  isDarkMode ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-white text-slate-900'
+                }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="w-9 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg font-black">
+                  <div className="w-9 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg font-black shrink-0">
                     🏆
                   </div>
-                  {liveTourMatches.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500 text-white animate-pulse">
-                      {liveTourMatches.length} Live
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {liveTourMatches.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500 text-white animate-pulse">
+                        {liveTourMatches.length} Live
+                      </span>
+                    )}
+                    {champion && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1">
+                        <span>👑</span>
+                        <span className="truncate max-w-[70px]">{champion.name}</span>
+                      </span>
+                    )}
+                    {!hasStarted && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-700/60 text-slate-300 border border-slate-600/60">
+                        Starting Soon
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="mt-2.5">
@@ -548,12 +684,31 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                   <p className="text-xs text-amber-400 font-bold">
                     {tour.trophyName}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className={`text-[11px] mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
                     {tour.location} • {tour.season}
                   </p>
+                  {leader && (
+                    <p className="text-[11px] font-bold text-emerald-400 mt-1 flex items-center gap-1 truncate">
+                      <span>🥇</span>
+                      <span className="truncate">{leader.name} leading</span>
+                    </p>
+                  )}
                 </div>
 
-                <div className="mt-3 pt-2.5 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400">
+                {hasStarted && (
+                  <div className="mt-2.5">
+                    <div className={`h-1.5 rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-500"
+                        style={{ width: `${progressPct}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                  isDarkMode ? 'border-slate-800/60 text-slate-400' : 'border-slate-200 text-slate-500'
+                }`}>
                   <span className="font-bold">{tour.teams.length} Teams</span>
                   <span>{completedTourMatches.length} Played</span>
                   <span className="text-emerald-400 font-black flex items-center gap-0.5">
@@ -590,38 +745,91 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-            {recentCompletedMatches.map((m) => (
-              <div
-                key={m.id}
-                onClick={() => {
-                  handleScorecard(m);
-                  cricketAudio.playClick();
-                }}
-                className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900 text-white shadow-md hover:border-slate-700 cursor-pointer transition"
-              >
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
-                  <span className="font-bold truncate max-w-[140px]">{m.tournamentName || m.name || 'ARCL Match'}</span>
-                  <span>{m.date || 'Recent'}</span>
-                </div>
+            {recentCompletedMatches.map((m) => {
+              // Look up each team's score by teamId (see getTeamScoreForCard
+              // above) instead of assuming teamA always equals innings1 —
+              // that assumption is what caused the swapped scores.
+              const teamAScore = getTeamScoreForCard(m, m.teamA.id);
+              const teamBScore = getTeamScoreForCard(m, m.teamB.id);
+              const teamAOvers = getTeamOversForCard(m, m.teamA.id);
+              const teamBOvers = getTeamOversForCard(m, m.teamB.id);
 
-                <div className="space-y-1 text-xs">
-                  <div className="flex items-center justify-between font-black">
-                    <span className="truncate">{m.teamA.name}</span>
-                    <span className="font-mono">{m.innings1?.totalRuns || 0}-{m.innings1?.totalWickets || 0}</span>
-                  </div>
-                  <div className="flex items-center justify-between font-black">
-                    <span className="truncate">{m.teamB.name}</span>
-                    <span className="font-mono">{m.innings2?.totalRuns || 0}-{m.innings2?.totalWickets || 0}</span>
-                  </div>
-                </div>
+              const winnerId = m.result?.winnerTeamId;
+              const marginText = m.result?.marginRuns
+                ? `Won by ${m.result.marginRuns} run${m.result.marginRuns === 1 ? '' : 's'}`
+                : m.result?.marginWickets
+                ? `Won by ${m.result.marginWickets} wicket${m.result.marginWickets === 1 ? '' : 's'}`
+                : m.result?.marginInnings
+                ? 'Won by an innings'
+                : m.result?.isTie
+                ? 'Match Tied'
+                : null;
 
-                {m.result && (
-                  <div className="mt-2 pt-1.5 border-t border-slate-800 text-[10px] font-bold text-emerald-400 truncate">
-                    🏆 {m.result.summary}
+              const formatLabel = m.settings?.matchType || (m.matchFormat === 'test' ? 'Test Match' : null);
+
+              return (
+                <div
+                  key={m.id}
+                  onClick={() => {
+                    handleScorecard(m);
+                    cricketAudio.playClick();
+                  }}
+                  className="p-3.5 rounded-2xl border border-slate-800 bg-slate-900 text-white shadow-md hover:border-slate-700 cursor-pointer transition"
+                >
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 gap-2">
+                    <span className="font-bold truncate">{m.tournamentName || m.name || 'ARCL Match'}</span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {formatLabel && (
+                        <span className="px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 text-slate-300 text-[9px] font-bold uppercase">
+                          {formatLabel}
+                        </span>
+                      )}
+                      <span>{m.date || 'Recent'}</span>
+                    </div>
                   </div>
-                )}
-              </div>
-            ))}
+
+                  <div className="space-y-1 text-xs">
+                    <div className={`flex items-center justify-between ${
+                      winnerId === m.teamA.id ? 'font-black text-emerald-400' : 'font-bold text-slate-300'
+                    }`}>
+                      <span className="truncate flex items-center gap-1">
+                        {winnerId === m.teamA.id && <span>🏆</span>}
+                        {m.teamA.name}
+                      </span>
+                      <span className="font-mono shrink-0">
+                        {teamAScore.runs}-{teamAScore.wickets}
+                        {teamAOvers !== null && <span className="text-[10px] opacity-70"> ({teamAOvers})</span>}
+                      </span>
+                    </div>
+                    <div className={`flex items-center justify-between ${
+                      winnerId === m.teamB.id ? 'font-black text-emerald-400' : 'font-bold text-slate-300'
+                    }`}>
+                      <span className="truncate flex items-center gap-1">
+                        {winnerId === m.teamB.id && <span>🏆</span>}
+                        {m.teamB.name}
+                      </span>
+                      <span className="font-mono shrink-0">
+                        {teamBScore.runs}-{teamBScore.wickets}
+                        {teamBOvers !== null && <span className="text-[10px] opacity-70"> ({teamBOvers})</span>}
+                      </span>
+                    </div>
+                  </div>
+
+                  {marginText && (
+                    <div className="mt-2 pt-1.5 border-t border-slate-800 text-[10px] font-bold text-amber-400 truncate">
+                      {marginText}
+                    </div>
+                  )}
+
+                  {m.result?.playerOfTheMatch?.playerName && (
+                    <div className="mt-1 text-[10px] font-semibold text-slate-400 truncate flex items-center gap-1">
+                      <span>⭐</span>
+                      <span>POTM: <span className="text-slate-200">{m.result.playerOfTheMatch.playerName}</span></span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
