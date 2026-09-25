@@ -27,43 +27,27 @@ interface LiveFeedViewProps {
   isDarkMode?: boolean;
 }
 
-// Recent Match Results cards were pairing "Team A" with innings1 and
-// "Team B" with innings2 unconditionally. innings1 actually belongs to
-// whichever team batted first (decided by the toss), so whenever Team B
-// won the toss and batted first, the two scores showed up swapped onto
-// the wrong team names. This looks up each team's innings by teamId
-// instead of by position, and — for Test matches with 2 innings per
-// side — adds both of that team's innings together for a fair total,
-// using the most recent of their innings for the "wickets" count.
-const getTeamScoreForCard = (m: Match, teamId: string): { runs: number; wickets: number } => {
+// Display score cleanly: Test match ke liye "120-2 & 119-2", Limited match ke liye "84-3 (7.0)"
+const getTeamScoreDisplay = (m: Match, teamId: string): string => {
   const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
     (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId
   );
-  if (allInnings.length === 0) return { runs: 0, wickets: 0 };
+  if (allInnings.length === 0) return '0-0';
 
-  const totalRuns = allInnings.reduce((sum, inn) => sum + (inn.totalRuns || 0), 0);
-  const latestInnings = allInnings[allInnings.length - 1];
-  return { runs: totalRuns, wickets: latestInnings.totalWickets || 0 };
-};
+  const isTest = m.matchFormat === 'test' || (m.settings?.matchType && m.settings.matchType.toLowerCase().includes('test'));
 
-// Overs faced string for the Recent Match Results card, e.g. "13.5". For a
-// Test match (2 innings per side) this shows the most recent innings' overs
-// rather than trying to add two over-counts together. Returns null when the
-// team never batted (shouldn't happen for a completed match, but keeps the
-// card from showing a stray "(0.0)").
-const getTeamOversForCard = (m: Match, teamId: string): string | null => {
-  const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
-    (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId
-  );
-  if (allInnings.length === 0) return null;
+  if (isTest && allInnings.length > 1) {
+    return allInnings
+      .map(inn => `${inn.totalRuns || 0}-${inn.totalWickets || 0}`)
+      .join(' & ');
+  }
+
   const latest = allInnings[allInnings.length - 1];
-  return `${latest.oversCompleted || 0}.${latest.ballsInCurrentOver || 0}`;
+  const oversStr = `${latest.oversCompleted || 0}.${latest.ballsInCurrentOver || 0}`;
+  return `${latest.totalRuns || 0}-${latest.totalWickets || 0} (${oversStr})`;
 };
 
-// Simple league-stage leader for a tournament preview card: 2 pts per win,
-// tie-broken by wins. This is intentionally lighter than the full points
-// table (no NRR) since it's only used for a one-line "leading" label — all
-// computed from matches already loaded, no extra Firebase reads.
+// Simple league-stage leader for a tournament preview card
 const getTournamentLeader = (
   tourMatches: Match[],
   teams: Team[]
@@ -150,11 +134,6 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   const recentCompletedMatches = useMemo(() => {
     return allMatches.filter((m) => m.status === 'completed').slice(0, 4);
   }, [allMatches]);
-
-  const isUserAdmin = Boolean(
-    loggedInPlayer &&
-    (loggedInPlayer.profileId === 'ARCL-001')
-  );
 
   const confirmDeleteMatch = () => {
     if (!matchToDelete) return;
@@ -365,15 +344,9 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               const target = currentInnNum === 2 ? (m.innings1?.totalRuns || 0) + 1 : null;
               const ballsRemaining = Math.max(0, m.totalOvers * 6 - ((currentInn?.oversCompleted || 0) * 6 + (currentInn?.ballsInCurrentOver || 0)));
               const runsNeeded = target ? Math.max(0, target - (currentInn?.totalRuns || 0)) : 0;
-              // Required run rate: only meaningful while chasing (innings 2) with balls still left.
               const rrr = target && ballsRemaining > 0 ? (runsNeeded / (ballsRemaining / 6)).toFixed(2) : null;
-              // Overs-completed progress bar — purely a % of m.totalOvers, no extra data needed.
               const oversProgressPct = m.totalOvers > 0 ? Math.min(100, (totalOvers / m.totalOvers) * 100) : 0;
 
-              // Current partnership: runs & legal balls since the last fall of wicket
-              // (or since the innings started, if no wicket has fallen yet). Derived
-              // entirely from data already on the match object — fallOfWickets and
-              // the ball-by-ball list — so this costs nothing extra to compute.
               const fallOfWickets = currentInn?.fallOfWickets || [];
               const lastWicketScore = fallOfWickets.length > 0 ? fallOfWickets[fallOfWickets.length - 1].score : 0;
               const partnershipRuns = Math.max(0, (currentInn?.totalRuns || 0) - lastWicketScore);
@@ -745,13 +718,8 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
             {recentCompletedMatches.map((m) => {
-              // Look up each team's score by teamId (see getTeamScoreForCard
-              // above) instead of assuming teamA always equals innings1 —
-              // that assumption is what caused the swapped scores.
-              const teamAScore = getTeamScoreForCard(m, m.teamA.id);
-              const teamBScore = getTeamScoreForCard(m, m.teamB.id);
-              const teamAOvers = getTeamOversForCard(m, m.teamA.id);
-              const teamBOvers = getTeamOversForCard(m, m.teamB.id);
+              const teamAScoreDisplay = getTeamScoreDisplay(m, m.teamA.id);
+              const teamBScoreDisplay = getTeamScoreDisplay(m, m.teamB.id);
 
               const winnerId = m.result?.winnerTeamId;
               const marginText = m.result?.marginRuns
@@ -796,8 +764,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                         {m.teamA.name}
                       </span>
                       <span className="font-mono shrink-0">
-                        {teamAScore.runs}-{teamAScore.wickets}
-                        {teamAOvers !== null && <span className="text-[10px] opacity-70"> ({teamAOvers})</span>}
+                        {teamAScoreDisplay}
                       </span>
                     </div>
                     <div className={`flex items-center justify-between ${
@@ -808,8 +775,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                         {m.teamB.name}
                       </span>
                       <span className="font-mono shrink-0">
-                        {teamBScore.runs}-{teamBScore.wickets}
-                        {teamBOvers !== null && <span className="text-[10px] opacity-70"> ({teamBOvers})</span>}
+                        {teamBScoreDisplay}
                       </span>
                     </div>
                   </div>
