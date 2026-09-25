@@ -41,6 +41,11 @@ const getTeamScoreForCard = (m: Match, teamId: string): { runs: number; wickets:
   );
   if (allInnings.length === 0) return { runs: 0, wickets: 0 };
 
+  const totalRuns = allInnings.reduce((sum, inn) => sum + (inn.totalRuns || 0), 0);
+  const latestInnings = allInnings[allInnings.length - 1];
+  return { runs: totalRuns, wickets: latestInnings.totalWickets || 0 };
+};
+
 // Overs faced string for the Recent Match Results card, e.g. "13.5". For a
 // Test match (2 innings per side) this shows the most recent innings' overs
 // rather than trying to add two over-counts together. Returns null when the
@@ -54,7 +59,6 @@ const getTeamOversForCard = (m: Match, teamId: string): string | null => {
   const latest = allInnings[allInnings.length - 1];
   return `${latest.oversCompleted || 0}.${latest.ballsInCurrentOver || 0}`;
 };
-
 
 // Simple league-stage leader for a tournament preview card: 2 pts per win,
 // tie-broken by wins. This is intentionally lighter than the full points
@@ -85,11 +89,6 @@ const getTournamentLeader = (
   const rows = Object.values(pointsMap).sort((a, b) => (b.points - a.points) || (b.wins - a.wins));
   if (rows.length === 0 || rows[0].points === 0) return null;
   return { name: rows[0].name, color: rows[0].color };
-};
-
-  const totalRuns = allInnings.reduce((sum, inn) => sum + (inn.totalRuns || 0), 0);
-  const latestInnings = allInnings[allInnings.length - 1];
-  return { runs: totalRuns, wickets: latestInnings.totalWickets || 0 };
 };
 
 export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
