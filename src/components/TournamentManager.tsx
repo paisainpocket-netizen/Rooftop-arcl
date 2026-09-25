@@ -4,7 +4,7 @@ import {
   Plus, Trophy, Sparkles, Calendar, MapPin, Play, FileText, Settings, Edit3, 
   Image as ImageIcon, X, Check, Camera, Eye, Users, Shield, Copy, Hash, Award, 
   Flame, Zap, CheckCircle2, XCircle, Crown, Sliders, ChevronDown, BarChart3, 
-  Target, Gem, Star, ArrowUpRight, Activity
+  Target, Gem, Star, ArrowUpRight, Activity, Share2, Download
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { TeamProfileModal } from './TeamProfileModal';
@@ -92,6 +92,57 @@ export const STATUS_CONFIG: Record<
     icon: '🔴',
     description: 'Knocked out from tournament',
   },
+};
+
+// ---- Points Table poster: canvas drawing helpers (pure client-side, no
+// Firebase storage involved — the PNG is generated in-browser and only
+// ever touches the device's own share sheet / downloads). --------------
+
+const hexToRgbPT = (hex: string): [number, number, number] => {
+  const clean = (hex || '#10b981').replace('#', '');
+  const full = clean.length === 3 ? clean.split('').map((c) => c + c).join('') : clean;
+  const num = parseInt(full, 16);
+  if (isNaN(num)) return [16, 185, 129];
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
+};
+
+const rgbaPT = (hex: string, alpha: number): string => {
+  const [r, g, b] = hexToRgbPT(hex);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
+const drawInstagramIconPT = (ctx: CanvasRenderingContext2D, x: number, y: number, size: number, color: string) => {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = size * 0.09;
+  ctx.beginPath();
+  ctx.roundRect(x, y, size, size, size * 0.28);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x + size / 2, y + size / 2, size * 0.24, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x + size * 0.78, y + size * 0.22, size * 0.06, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+};
+
+const drawElevatedPanelPT = (
+  ctx: CanvasRenderingContext2D,
+  x: number, y: number, w: number, h: number, radius: number,
+  fill: string,
+  shadowColor = 'rgba(0,0,0,0.4)'
+) => {
+  ctx.save();
+  ctx.shadowColor = shadowColor;
+  ctx.shadowBlur = 22;
+  ctx.shadowOffsetY = 8;
+  ctx.fillStyle = fill;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, radius);
+  ctx.fill();
+  ctx.restore();
 };
 
 interface StatColumn {
@@ -203,6 +254,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
   // Phone-only: which points-table row is expanded to show Status / Ties / Form
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
+  const [isGeneratingTablePoster, setIsGeneratingTablePoster] = useState(false);
 
   useEffect(() => {
     if (initialTournamentId) {
@@ -478,6 +530,248 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       });
   }, [tournamentMatches, teams]);
 
+  // ---- Points Table poster: builds a shareable PNG entirely on-device.
+  // Uses the same `pointsTable` array already computed above for the on-
+  // screen table, so the shared image always matches what's on screen —
+  // no separate calculation, no server round-trip.
+  const drawPointsTablePoster = (): HTMLCanvasElement => {
+    const W = 1080;
+    const rowH = 92;
+    const headerBlockH = 420;
+    const tableHeaderH = 78;
+    const footerH = 190;
+    const rows = pointsTable.length;
+    const H = headerBlockH + tableHeaderH + rows * rowH + footerH;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    if (!ctx || !selectedTournament) return canvas;
+
+    // Background
+    ctx.fillStyle = '#05070d';
+    ctx.fillRect(0, 0, W, H);
+    const glow = ctx.createRadialGradient(W / 2, 0, 40, W / 2, 0, 700);
+    glow.addColorStop(0, 'rgba(245, 158, 11, 0.22)');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.fillRect(0, 0, W, 700);
+    const bottomFade = ctx.createLinearGradient(0, H - 220, 0, H);
+    bottomFade.addColorStop(0, 'transparent');
+    bottomFade.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = bottomFade;
+    ctx.fillRect(0, H - 220, W, 220);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(24, 24, W - 48, H - 48);
+
+    let y = 108;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 26px sans-serif';
+    ctx.save();
+    ctx.letterSpacing = '4px';
+    ctx.fillText('AMRITSAR ROOFTOP CRICKET LEAGUE', W / 2, y);
+    ctx.restore();
+
+    y += 42;
+    ctx.fillStyle = '#f59e0b';
+    ctx.font = '800 22px sans-serif';
+    ctx.fillText((selectedTournament.trophyName || selectedTournament.name).toUpperCase(), W / 2, y);
+
+    y += 36;
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '700 20px sans-serif';
+    ctx.fillText(`${selectedTournament.season} • ${selectedTournament.location}`, W / 2, y);
+
+    // Status pill
+    y += 56;
+    const pillText = 'POINTS TABLE';
+    ctx.font = '900 20px sans-serif';
+    const pillW = ctx.measureText(pillText).width + 68;
+    const pillH = 52;
+    drawElevatedPanelPT(ctx, W / 2 - pillW / 2, y - pillH / 2, pillW, pillH, pillH / 2, '#059669', 'rgba(5,150,105,0.4)');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(pillText, W / 2, y + 7);
+
+    // Table header row
+    const tableX = 60;
+    const tableW = W - 120;
+    y += 70;
+    const headerTop = y;
+    drawElevatedPanelPT(ctx, tableX, headerTop, tableW, tableHeaderH, 18, 'rgba(15,23,42,0.95)');
+
+    const teamColX = tableX + 96;
+    const pColX = tableX + tableW * 0.52;
+    const wColX = tableX + tableW * 0.62;
+    const lColX = tableX + tableW * 0.72;
+    const nrrColX = tableX + tableW * 0.84;
+    const ptsColX = tableX + tableW - 36;
+
+    ctx.font = '900 18px sans-serif';
+    ctx.fillStyle = '#94a3b8';
+    ctx.textAlign = 'left';
+    ctx.fillText('TEAM', teamColX, headerTop + tableHeaderH / 2 + 6);
+    ctx.textAlign = 'center';
+    ctx.fillText('P', pColX, headerTop + tableHeaderH / 2 + 6);
+    ctx.fillText('W', wColX, headerTop + tableHeaderH / 2 + 6);
+    ctx.fillText('L', lColX, headerTop + tableHeaderH / 2 + 6);
+    ctx.fillText('NRR', nrrColX, headerTop + tableHeaderH / 2 + 6);
+    ctx.textAlign = 'right';
+    ctx.fillText('PTS', ptsColX, headerTop + tableHeaderH / 2 + 6);
+
+    let rowY = headerTop + tableHeaderH + 8;
+
+    pointsTable.forEach((row, idx) => {
+      const rankColors = ['#f59e0b', '#cbd5e1', '#c2410c'];
+      const isTop3 = idx < 3;
+      const rankColor = isTop3 ? rankColors[idx] : '#334155';
+
+      const currentStatus = (selectedTournament.teamStatuses && selectedTournament.teamStatuses[row.teamId]) || 'none';
+      const statusCfg = STATUS_CONFIG[currentStatus] || STATUS_CONFIG['none'];
+
+      const bg = isTop3 ? rgbaPT(rankColors[idx], 0.08) : (idx % 2 === 0 ? 'rgba(15,23,42,0.75)' : 'rgba(15,23,42,0.5)');
+      drawElevatedPanelPT(ctx, tableX, rowY, tableW, rowH - 10, 16, bg, 'rgba(0,0,0,0.25)');
+
+      if (isTop3) {
+        ctx.fillStyle = rankColors[idx];
+        ctx.beginPath();
+        ctx.roundRect(tableX, rowY, 8, rowH - 10, [16, 0, 0, 16]);
+        ctx.fill();
+      }
+
+      const cy = rowY + (rowH - 10) / 2;
+
+      // Rank circle
+      ctx.beginPath();
+      ctx.fillStyle = isTop3 ? rankColor : 'rgba(255,255,255,0.08)';
+      ctx.arc(tableX + 46, cy, 24, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = isTop3 ? '#05070d' : '#94a3b8';
+      ctx.font = '900 22px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(String(idx + 1), tableX + 46, cy + 8);
+
+      // Team color dot + name
+      ctx.fillStyle = row.teamColor || '#10b981';
+      ctx.beginPath();
+      ctx.arc(teamColX - 14, cy, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#f8fafc';
+      ctx.font = '800 26px sans-serif';
+      let displayName = row.teamName;
+      const maxNameW = tableW * 0.36;
+      while (ctx.measureText(displayName).width > maxNameW && displayName.length > 4) {
+        displayName = displayName.slice(0, -1);
+      }
+      if (displayName !== row.teamName) displayName = displayName.trim() + '…';
+      ctx.fillText(displayName, teamColX + 4, cy + 9);
+
+      if (currentStatus !== 'none') {
+        const nameW = ctx.measureText(displayName).width;
+        ctx.font = '900 15px sans-serif';
+        ctx.fillStyle = '#f59e0b';
+        ctx.fillText(statusCfg.badgeShort === '🏆 WINNER' ? '👑' : statusCfg.badgeShort, teamColX + 4 + nameW + 14, cy + 6);
+      }
+
+      ctx.textAlign = 'center';
+      ctx.font = '700 24px sans-serif';
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillText(String(row.played), pColX, cy + 8);
+      ctx.fillStyle = '#34d399';
+      ctx.fillText(String(row.won), wColX, cy + 8);
+      ctx.fillStyle = '#fb7185';
+      ctx.fillText(String(row.lost), lColX, cy + 8);
+
+      ctx.fillStyle = row.nrr >= 0 ? '#34d399' : '#fb7185';
+      ctx.font = '900 22px monospace';
+      ctx.fillText(row.nrr > 0 ? `+${row.nrr}` : String(row.nrr), nrrColX, cy + 8);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = '900 30px sans-serif';
+      ctx.fillText(String(row.points), ptsColX, cy + 10);
+
+      rowY += rowH;
+    });
+
+    // Footer
+    const footerY = H - 96;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - 200, footerY - 34);
+    ctx.lineTo(W / 2 + 200, footerY - 34);
+    ctx.stroke();
+
+    ctx.font = '900 26px sans-serif';
+    const igText = '@amritsarrooftopcricket';
+    const igIconSize = 30;
+    const igGap = 12;
+    const igTextW = ctx.measureText(igText).width;
+    const igTotalW = igIconSize + igGap + igTextW;
+    const igStartX = W / 2 - igTotalW / 2;
+    drawInstagramIconPT(ctx, igStartX, footerY - igIconSize / 2 - 2, igIconSize, '#f8fafc');
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(igText, igStartX + igIconSize + igGap, footerY + 9);
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#475569';
+    ctx.font = '700 18px sans-serif';
+    ctx.fillText('ARCL ROOFTOP LEAGUE • OFFICIAL POINTS TABLE', W / 2, footerY + 44);
+
+    return canvas;
+  };
+
+  const handleSharePointsTable = async () => {
+    if (!selectedTournament || pointsTable.length === 0) return;
+    try {
+      setIsGeneratingTablePoster(true);
+      cricketAudio.playClick();
+      const canvas = drawPointsTablePoster();
+      const dataUrl = canvas.toDataURL('image/png');
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], `ARCL_Points_Table_${selectedTournament.id}.png`, { type: 'image/png' });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${selectedTournament.name} — Points Table`,
+        });
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `ARCL_Points_Table_${selectedTournament.name}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    } catch (e: any) {
+      console.error('Error sharing points table:', e);
+      if (e?.name !== 'AbortError') {
+        alert("Share cancel ho gaya ya fail ho gaya. Neeche 'Save' se seedha gallery mein download kar sakte hain.");
+      }
+    } finally {
+      setIsGeneratingTablePoster(false);
+    }
+  };
+
+  const handleDownloadPointsTable = () => {
+    if (!selectedTournament || pointsTable.length === 0) return;
+    cricketAudio.playClick();
+    const canvas = drawPointsTablePoster();
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ARCL_Points_Table_${selectedTournament.name}.png`;
+    a.click();
+  };
+
   const tournamentPlayerStats = useMemo((): TournamentPlayerStat[] => {
     return calculateTournamentStats(tournamentMatches);
   }, [tournamentMatches]);
@@ -738,19 +1032,32 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   </div>
                 </div>
 
-                {canEditSelectedTournament && statsTab === 'points' && (
-                  <button
-                    onClick={() => setIsStatusManagerOpen((prev) => !prev)}
-                    className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border ${
-                      isStatusManagerOpen
-                        ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
-                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
-                    }`}
-                  >
-                    <Sliders className="w-3.5 h-3.5" />
-                    <span>{isStatusManagerOpen ? 'Hide Controls' : '⚡ Manage Status (Q/SF/F)'}</span>
-                  </button>
-                )}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {statsTab === 'points' && pointsTable.length > 0 && (
+                    <button
+                      onClick={handleSharePointsTable}
+                      disabled={isGeneratingTablePoster}
+                      className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 border-emerald-500/40 text-white shadow-md shadow-emerald-600/20 disabled:opacity-50"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>{isGeneratingTablePoster ? 'Generating...' : 'Share'}</span>
+                    </button>
+                  )}
+
+                  {canEditSelectedTournament && statsTab === 'points' && (
+                    <button
+                      onClick={() => setIsStatusManagerOpen((prev) => !prev)}
+                      className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border ${
+                        isStatusManagerOpen
+                          ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                          : 'bg-slate-800 border-slate-700 text-slate-300 hover:text-white'
+                      }`}
+                    >
+                      <Sliders className="w-3.5 h-3.5" />
+                      <span>{isStatusManagerOpen ? 'Hide Controls' : '⚡ Manage Status (Q/SF/F)'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Sub-tabs pills */}
