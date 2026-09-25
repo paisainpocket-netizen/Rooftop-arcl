@@ -24,10 +24,10 @@ import { WagonWheelModal } from './WagonWheelModal';
 import { WagonWheelView } from './WagonWheelView';
 import confetti from 'canvas-confetti';
 import {
+  Settings,
   RotateCcw,
   User,
   Users,
-  Trophy,
   Share2,
   FileText,
   AlertTriangle,
