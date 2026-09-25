@@ -1,113 +1,125 @@
 import { BallOutcome, WicketType } from '../types/cricket';
 
+type Lang = 'pa' | 'hi' | 'en';
+
 export function generateCommentary(
   ball: Partial<BallOutcome>,
   strikerName: string,
   bowlerName: string,
   totalRuns: number,
-  totalWickets: number
+  totalWickets: number,
+  lang: Lang = 'en'
 ): string {
   const { runsBat = 0, isWicket = false, wicketType, extraType = 'none', isFour = false, isSix = false, isFreeHit = false } = ball;
 
   if (isWicket) {
     switch (wicketType) {
       case 'direct_roof_out':
-        return `⚠️ DIRECT ROOF OUT! ${strikerName} ne ball terrace boundary ton bahar uda ditti! Rooftop rule de hisaab naal batsman OUT! Score: ${totalRuns}/${totalWickets}. Ball dhoondhn kaun jaayega?!`;
+        if (lang === 'pa') return `ਵੱਡਾ ਸ਼ਾਟ, ਪਰ ਛੱਤ ਤੋਂ ਬਾਹਰ! ${strikerName} ਨਿਯਮ ਮੁਤਾਬਕ ਆਊਟ! (${totalRuns}/${totalWickets})`;
+        return `Big shot, but out of the roof! ${strikerName} is out under the rooftop rule! (${totalRuns}/${totalWickets})`;
+
       case 'wall_catch':
-        return `💥 KANDH LAG KE CATCH! One hand one bounce off the wall! Clean catch by the fielder, ${strikerName} has to walk back! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਗੇਂਦ ਕੰਧ ਨਾਲ ਟਕਰਾਈ, ਫੀਲਡਰ ਨੇ ਲਪਕ ਲਈ! ${strikerName} ਆਊਟ! (${totalRuns}/${totalWickets})`;
+        return `Ball hits the wall, the fielder snaps it up! ${strikerName} is out! (${totalRuns}/${totalWickets})`;
+
       case 'bowled':
-        return `🎯 TIMBERRR! ${bowlerName} sends the stumps flying! Perfect yorker on the concrete pitch! ${strikerName} completely beaten! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਹਾਏ! ${strikerName} ਬਿਲਕੁਲ ਧੋਖਾ ਖਾ ਗਿਆ, ${bowlerName} ਨੇ ਸਟੰਪਾਂ ਖਿਲਾਰ ਦਿੱਤੀਆਂ! (${totalRuns}/${totalWickets})`;
+        return `Beaten all ends up! ${bowlerName} sends the stumps flying, ${strikerName} is bowled! (${totalRuns}/${totalWickets})`;
+
       case 'caught':
-        return `🧤 OUT! In the air... and safely caught inside the roof net! Huge wicket for ${bowlerName}! ${strikerName} departs. (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਵੱਡਾ ਸ਼ਾਟ ਖੇਡਣ ਦੀ ਕੋਸ਼ਿਸ਼, ਪਰ ਸਿੱਧਾ ਫੀਲਡਰ ਦੇ ਹੱਥਾਂ 'ਚ! ${strikerName} ਕੈਚ ਆਊਟ! (${totalRuns}/${totalWickets})`;
+        return `Went for the big shot, but straight into the fielder's hands! ${strikerName} is caught! (${totalRuns}/${totalWickets})`;
+
       case 'runout':
-        return `⚡ RUN OUT! Miscommunication between the wickets! Direct hit and ${strikerName} is miles out of his crease! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਦੋਹਾਂ ਬੱਲੇਬਾਜ਼ਾਂ 'ਚ ਕਨਫਿਊਜ਼ਨ! ਸਿੱਧੀ ਥਰੋਅ ਵਿਕਟ 'ਤੇ, ${strikerName} ਆਊਟ! (${totalRuns}/${totalWickets})`;
+        return `Mix-up between the batsmen! Direct hit on the stumps, ${strikerName} is run out! (${totalRuns}/${totalWickets})`;
+
       case 'stumped':
-        return `⚡ STUMPED! ${strikerName} steps down the track, misses, and the keeper does the rest in a flash! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਸਟੰਪਡ! ${strikerName} ਕ੍ਰੀਜ਼ ਤੋਂ ਬਾਹਰ ਨਿਕਲ ਗਿਆ, ਕੀਪਰ ਨੇ ਮੌਕਾ ਨਹੀਂ ਖੁੰਝਾਇਆ! (${totalRuns}/${totalWickets})`;
+        return `Stumped! ${strikerName} was out of the crease, the keeper doesn't miss! (${totalRuns}/${totalWickets})`;
+
       case 'lbw':
-        return `☝️ APPEAL & OUT! Right in front of the middle stump, umpire raises the finger! LBW! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਸਿੱਧੀ ਪੈਡ 'ਤੇ ਵੱਜੀ ਗੇਂਦ! ਜ਼ੋਰਦਾਰ ਅਪੀਲ ਤੇ ਅੰਪਾਇਰ ਨੇ ${strikerName} ਨੂੰ ਆਊਟ ਦੇ ਦਿੱਤਾ! (${totalRuns}/${totalWickets})`;
+        return `Struck right on the pad! Big appeal, and the umpire raises the finger — ${strikerName} is out LBW! (${totalRuns}/${totalWickets})`;
+
       case 'hitwicket':
-        return `🤦‍♂️ HIT WICKET! ${strikerName} moves back too deep and dislodges the bails! Unlucky dismissal! (${totalRuns}/${totalWickets})`;
+        if (lang === 'pa') return `ਬਦਕਿਸਮਤੀ! ${strikerName} ਪਿੱਛੇ ਹਟਦੇ ਹੋਏ ਖੁਦ ਆਪਣੀ ਵਿਕਟ ਨਾਲ ਟਕਰਾ ਗਿਆ, ਹਿੱਟ ਵਿਕਟ ਆਊਟ! (${totalRuns}/${totalWickets})`;
+        return `Unlucky! ${strikerName} steps back and dislodges the bails, hit wicket! (${totalRuns}/${totalWickets})`;
+
       default:
-        return `🚨 WICKET! ${strikerName} is OUT! ${bowlerName} gets the breakthrough! Score moves to ${totalRuns}/${totalWickets}.`;
+        if (lang === 'pa') return `ਵਿਕਟ ਡਿੱਗੀ! ${strikerName} ਆਊਟ, ${bowlerName} ਨੂੰ ਵੱਡੀ ਸਫਲਤਾ! (${totalRuns}/${totalWickets})`;
+        return `Wicket! ${strikerName} is out, a big breakthrough for ${bowlerName}! (${totalRuns}/${totalWickets})`;
     }
   }
 
   if (isSix) {
-    const lines = [
-      `🚀 SHOT YAAR! ${strikerName} smashes it high into the Amritsar sky! Massive maximum over the water tank! 6 RUNS!`,
-      `🔥 BOOM! Gagan-chumbi sixer by ${strikerName}! Sweet sound off the bat, straight into the safe net! 6 Runs!`,
-      `⭐ WHAT A HIT! Right in the slot and ${strikerName} launches it into orbit! 6 runs added to the total!`,
-      `🏏 PURE POWER! ${strikerName} pulls it over mid-wicket for a gigantic terrace six! Majestic stroke!`
-    ];
-    return lines[Math.floor(Math.random() * lines.length)];
+    if (lang === 'pa') return `ਹਾਏ ਓਏ! ${strikerName} ਨੇ ਗੇਂਦ ਨੂੰ ਅਸਮਾਨ 'ਚ ਭੇਜ ਦਿੱਤਾ, ਛੱਕਾ ਵੱਜ ਗਿਆ ਵੀਰੋ!`;
+    return `Massive hit! ${strikerName} sends it soaring, that's a huge SIX!`;
   }
 
   if (isFour) {
-    const lines = [
-      `⚡ CHAUQA! Pierces the gap between the two water tanks! Lightning fast boundary for ${strikerName}! 4 Runs!`,
-      `🔥 CLASSIC DRIVE! ${strikerName} creams it along the rooftop floor for a crisp FOUR! Beautiful timing!`,
-      `🎯 BOUNDARY! Edge and flies past slip to the corner net for 4 valuable runs!`
-    ];
-    return lines[Math.floor(Math.random() * lines.length)];
+    if (lang === 'pa') return `ਸ਼ਾਨਦਾਰ ਸ਼ਾਟ! ${strikerName} ਨੇ ਗੈਪ ਲੱਭ ਲਿਆ, ਗੇਂਦ ਸਿੱਧੀ ਬਾਊਂਡਰੀ ਪਾਰ, ਚਾਰ ਦੌੜਾਂ!`;
+    return `Great shot! ${strikerName} finds the gap, races away to the boundary for FOUR!`;
   }
 
   if (extraType === 'wide') {
-    return `↔️ Wide ball by ${bowlerName}. Straying down the leg side, umpire stretches both arms. 1 extra added.`;
+    if (lang === 'pa') return `ਵਾਈਡ ਬਾਲ, ਇੱਕ ਦੌੜ ਵਾਧੂ।`;
+    return `Wide ball, one extra run.`;
   }
 
   if (extraType === 'noBall') {
-    return `🚨 NO BALL! ${bowlerName} oversteps the line! 1 run penalty + FREE HIT coming up next!`;
+    if (lang === 'pa') return `ਨੋ ਬਾਲ! ਫ੍ਰੀ ਹਿੱਟ ਤਿਆਰ।`;
+    return `No ball! Free hit coming up.`;
   }
 
   if (runsBat === 0) {
-    const dots = [
-      `Dot ball. Good tight bowling by ${bowlerName}, no run conceded.`,
-      `Defended solidly into the pitch by ${strikerName}. Zero runs.`,
-      `Beaten outside off! Sharp tennis bounce, no run.`,
-      `Played straight to the fielder stationed by the terrace railing. Dot ball.`
-    ];
-    return dots[Math.floor(Math.random() * dots.length)];
+    if (lang === 'pa') return `ਵਧੀਆ ਗੇਂਦ, ਕੋਈ ਦੌੜ ਨਹੀਂ।`;
+    return `Good ball, no run.`;
   }
 
   if (runsBat === 1) {
-    return `Quick single taken by ${strikerName}, good aggressive running between the wickets. 1 run.`;
+    if (lang === 'pa') return `${strikerName} ਨੇ ਇੱਕ ਦੌੜ ਲੈ ਲਈ।`;
+    return `${strikerName} takes a quick single.`;
   }
 
   if (runsBat === 2) {
-    return `Tucked away softly on the leg side, rapid running turns 1 into 2 runs!`;
+    if (lang === 'pa') return `ਚੰਗੀ ਪਲੇਸਿੰਗ! ${strikerName} ਨੇ ਦੋ ਦੌੜਾਂ ਚੁਰਾ ਲਈਆਂ।`;
+    return `Good placement! ${strikerName} picks up two runs.`;
   }
 
   if (runsBat === 3) {
-    return `Great placement and super fast running! Batsmen hustle for 3 runs!`;
+    if (lang === 'pa') return `ਬਹੁਤ ਵਧੀਆ ਦੌੜ! ${strikerName} ਤੇ ਸਾਥੀ ਨੇ ਤਿੰਨ ਦੌੜਾਂ ਪੂਰੀਆਂ ਕੀਤੀਆਂ!`;
+    return `Excellent running! ${strikerName} and partner complete three runs!`;
   }
 
+  if (lang === 'pa') return `${bowlerName} ਵੱਲੋਂ ${strikerName} ਨੂੰ, ${runsBat} ਦੌੜਾਂ। ਸਕੋਰ: ${totalRuns}/${totalWickets}`;
   return `${bowlerName} to ${strikerName}, ${runsBat} run(s) scored. Total: ${totalRuns}/${totalWickets}`;
 }
 
 // Batsman Under Pressure: 3 consecutive dot balls faced
 export function getPressureBatsmanText(batterName: string, lang: 'pa' | 'hi' | 'en'): string {
-  if (lang === 'pa') return `${batterName} ਹੁਣ ਦਬਾਅ ਹੇਠ ਹੈ! ਲਗਾਤਾਰ ਤਿੰਨ ਡਾਟ ਬਾਲਾਂ ਖੇਡ ਲਈਆਂ, ਰਨ ਬਣਾਉਣੇ ਔਖੇ ਹੋ ਰਹੇ ਨੇ!`;
+  if (lang === 'pa') return `ਹੁਣ ${batterName} ਲਈ ਗੱਲ ਔਖੀ ਹੋ ਗਈ, ਲਗਾਤਾਰ ਤਿੰਨ ਗੇਂਦਾਂ 'ਤੇ ਕੋਈ ਦੌੜ ਨਹੀਂ!`;
   if (lang === 'hi') return `${batterName} अब दबाव में हैं! लगातार तीन डॉट बॉल खेल ली हैं, रन बनाना मुश्किल हो रहा है!`;
-  return `${batterName} is now under pressure! Three dot balls in a row, struggling to get the runs flowing!`;
+  return `${batterName} is under pressure now, three dot balls in a row!`;
 }
 
 // Bowler Under Pressure: 3 boundaries conceded off this bowler
 export function getPressureBowlerText(bowlerName: string, lang: 'pa' | 'hi' | 'en'): string {
-  if (lang === 'pa') return `${bowlerName} ਹੁਣ ਦਬਾਅ ਹੇਠ ਹੈ! ਲਗਾਤਾਰ ਬਾਊਂਡਰੀਆਂ ਵੱਜ ਰਹੀਆਂ ਨੇ, ਕਪਤਾਨ ਨੂੰ ਕੁਝ ਸੋਚਣਾ ਪਵੇਗਾ!`;
+  if (lang === 'pa') return `ਕਪਤਾਨ ਪਰੇਸ਼ਾਨ! ${bowlerName} ਦੀ ਗੇਂਦਬਾਜ਼ੀ 'ਚ ਲਗਾਤਾਰ ਬਾਊਂਡਰੀਆਂ ਪੈ ਰਹੀਆਂ!`;
   if (lang === 'hi') return `${bowlerName} अब दबाव में हैं! लगातार बाउंड्री लग रही हैं, कप्तान को कुछ सोचना होगा!`;
-  return `${bowlerName} is under real pressure now! Boundaries keep flowing, the captain might need a change!`;
+  return `Captain is worried! ${bowlerName} keeps leaking boundaries!`;
 }
 
 // Hat-trick Celebration: bowler takes 3 wickets in a row
 export function getHatTrickText(bowlerName: string, lang: 'pa' | 'hi' | 'en'): string {
-  if (lang === 'pa') return `ਹੈਟ੍ਰਿਕ! ਹੈਟ੍ਰਿਕ! ਹੈਟ੍ਰਿਕ! ${bowlerName} ਨੇ ਕਮਾਲ ਕਰ ਦਿੱਤਾ, ਲਗਾਤਾਰ ਤਿੰਨ ਗੇਂਦਾਂ ਤੇ ਤਿੰਨ ਵਿਕਟਾਂ! ਕੀ ਸ਼ਾਨਦਾਰ ਸਪੈੱਲ ਹੈ!`;
+  if (lang === 'pa') return `ਹੈਟ੍ਰਿਕ! ${bowlerName} ਨੇ ਇਤਿਹਾਸ ਰਚ ਦਿੱਤਾ, ਤਿੰਨ ਗੇਂਦਾਂ ਤੇ ਤਿੰਨ ਵਿਕਟਾਂ!`;
   if (lang === 'hi') return `हैट्रिक! हैट्रिक! हैट्रिक! ${bowlerName} ने कमाल कर दिया, लगातार तीन गेंदों पर तीन विकेट! क्या शानदार स्पेल है!`;
-  return `Hat-trick! Hat-trick! Hat-trick! ${bowlerName} has done the incredible, three wickets in three balls! What a magical spell!`;
+  return `Hat-trick! ${bowlerName} makes history, three wickets in three balls!`;
 }
 
 // Maiden Over Special Announcement
 export function getMaidenOverText(bowlerName: string, lang: 'pa' | 'hi' | 'en'): string {
   if (lang === 'pa') return `ਕਿਆ ਬੋਲਿੰਗ ਕੀਤੀ ਹੈ, ${bowlerName} ਨੇ ਮੇਡਨ ਓਵਰ ਪਾ ਕੇ ਕਮਾਲ ਕਰ ਦਿੱਤਾ!`;
   if (lang === 'hi') return `क्या बोलिंग की है, ${bowlerName} ने मेडन ओवर डालकर कमाल कर दिया!`;
-  return `What a spell of bowling! ${bowlerName} delivers a brilliant maiden over!`;
+  return `Superb bowling! ${bowlerName} delivers a brilliant maiden over!`;
 }
