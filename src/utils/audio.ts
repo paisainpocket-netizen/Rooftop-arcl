@@ -1,3 +1,5 @@
+import { generateCommentary } from './commentary';
+
 class CricketAudioEngine {
   private ctx: AudioContext | null = null;
   private isMuted: boolean = false;
@@ -460,7 +462,14 @@ class CricketAudioEngine {
     } catch {}
   }
 
-  // Generate and Speak Real Cricket Commentary in English, Hindi or Punjabi
+  // Generate and Speak Real Cricket Commentary in English, Hindi or Punjabi.
+  //
+  // IMPORTANT: this no longer holds its own copy of the commentary text.
+  // All Punjabi/Hindi/English lines live in ONE place — generateCommentary()
+  // in commentary.ts. This function just maps the simple eventType it
+  // receives into the shape generateCommentary() expects, and speaks
+  // whatever text comes back. Edit wording only in commentary.ts; never
+  // add text strings back in here.
   public announceBallEvent(params: {
     eventType: 'dot' | 'single' | 'two' | 'three' | 'four' | 'six' | 'wicket' | 'wide' | 'noball' | 'direct_roof' | 'wall_catch' | 'retired_hurt' | 'fifty' | 'century' | 'win';
     batterName: string;
@@ -468,141 +477,29 @@ class CricketAudioEngine {
     runs?: number;
     wicketType?: string;
     customText?: string;
+    totalRuns?: number;
+    totalWickets?: number;
   }) {
     if (!this.isVoiceEnabled) return;
     const lang = this.getCommentaryLanguage();
-    const { eventType, batterName, bowlerName, runs = 0, customText } = params;
+    const { eventType, batterName, bowlerName, runs = 0, customText, wicketType, totalRuns = 0, totalWickets = 0 } = params;
 
     let commentaryText = '';
 
     if (customText) {
       commentaryText = customText;
-    } else if (lang === 'pa') {
-      switch (eventType) {
-        case 'six':
-          commentaryText = `ਓਹੋ ਹੋ! ${batterName} ਦਾ ਵੱਡਾ ਛੱਕਾ! ਗੇਂਦ ਸਿੱਧੀ ਛੱਤ ਤੇ!`;
-          break;
-        case 'four':
-          commentaryText = `ਕੈਮ ਚੌਕਾ! ${batterName} ਨੇ ਕੰਧ ਪਾਰ ਕਰਤੀ!`;
-          break;
-        case 'direct_roof':
-          commentaryText = `ਆਊਟ! ਸਿੱਧੀ ਛੱਤੋਂ ਬਾਹਰ ਮਾਰਤੀ, ਡਾਇਰੈਕਟ ਰੂਫ਼ ਆਊਟ!`;
-          break;
-        case 'wall_catch':
-          commentaryText = `ਆਊਟ! ਇਕ ਟੱਪਾ ਕੰਧ ਕੈਚ, ਬੱਲੇਬਾਜ਼ ਪਵੇਲੀਅਨ ਵੱਲ!`;
-          break;
-        case 'wicket':
-          commentaryText = `ਵਿਕਟ ਡਿੱਗ ਪਈ! ${bowlerName ? bowlerName + ' ਨੇ ' : ''}${batterName} ਨੂੰ ਆਊਟ ਕਰਤਾ!`;
-          break;
-        case 'single':
-          commentaryText = `ਸਿੰਗਲ ਰਨ, ${batterName} ਨੇ ਭੱਜ ਕੇ ਇਕ ਰਨ ਪੂਰਾ ਕੀਤਾ।`;
-          break;
-        case 'two':
-          commentaryText = `ਦੋ ਰਨ, ਵਧੀਆ ਦੌੜ ਬੱਲੇਬਾਜ਼ਾਂ ਦੀ।`;
-          break;
-        case 'dot':
-          commentaryText = `ਡਾਟ ਬਾਲ, ਵਧੀਆ ਗੇਂਦਬਾਜ਼ੀ!`;
-          break;
-        case 'wide':
-          commentaryText = `ਵਾਈਡ ਬਾਲ, ਇਕ ਵਾਧੂ ਰਨ ਮਿਲਿਆ।`;
-          break;
-        case 'noball':
-          commentaryText = `ਨੋ ਬਾਲ! ਅਗਲੀ ਗੇਂਦ ਫ੍ਰੀ ਹਿੱਟ ਹੋਵੇਗੀ!`;
-          break;
-        case 'retired_hurt':
-          commentaryText = `${batterName} ਰਿਟਾਇਰਡ ਹਰਟ ਹੋ ਕੇ ਬਾਹਰ ਗਏ।`;
-          break;
-        case 'fifty':
-          commentaryText = `ਵਾਹ ਜੀ ਵਾਹ! ${batterName} ਦੀ ਸ਼ਾਨਦਾਰ ਫਿਫਟੀ ਪੂਰੀ!`;
-          break;
-        case 'century':
-          commentaryText = `ਕਮਾਲ! ${batterName} ਦਾ ਇਤਿਹਾਸਿਕ ਸੈਂਕੜਾ!`;
-          break;
-        default:
-          commentaryText = `${runs} ਰਨ`;
-      }
-    } else if (lang === 'hi') {
-      switch (eventType) {
-        case 'six':
-          commentaryText = `गगनचुंबी छक्का! ${batterName} ने गेंद को छत के पार भेज दिया!`;
-          break;
-        case 'four':
-          commentaryText = `खूबसूरत चौका! ${batterName} के बल्ले से निकली गोली!`;
-          break;
-        case 'direct_roof':
-          commentaryText = `आउट! छत से बाहर डायरेक्ट शॉट, रूफ आउट!`;
-          break;
-        case 'wall_catch':
-          commentaryText = `आउट! दीवार से लगकर शानदार कैच लपका!`;
-          break;
-        case 'wicket':
-          commentaryText = `विकेट! ${batterName} आउट होकर पवेलियन लौटते हुए!`;
-          break;
-        case 'single':
-          commentaryText = `एक रन, आसानी से स्ट्राइक रोटेट की।`;
-          break;
-        case 'two':
-          commentaryText = `तेजी से भागकर दो रन पूरे किए।`;
-          break;
-        case 'dot':
-          commentaryText = `डॉट बॉल, कोई रन नहीं।`;
-          break;
-        case 'wide':
-          commentaryText = `अंपायर का इशारा वाइड बॉल, एक्स्ट्रा रन।`;
-          break;
-        case 'noball':
-          commentaryText = `नो बॉल! अगली गेंद फ्री हिट होगी!`;
-          break;
-        case 'retired_hurt':
-          commentaryText = `${batterName} रिटायर्ड हर्ट होकर बाहर गए।`;
-          break;
-        case 'fifty':
-          commentaryText = `शानदार अर्धशतक! ${batterName} की बेहतरीन फिफ्टी!`;
-          break;
-        default:
-          commentaryText = `${runs} रन`;
-      }
     } else {
-      switch (eventType) {
-        case 'six':
-          commentaryText = `Massive Six! ${batterName} clears the terrace with sheer power!`;
-          break;
-        case 'four':
-          commentaryText = `Glorious boundary! Four runs to ${batterName}!`;
-          break;
-        case 'direct_roof':
-          commentaryText = `OUT! Direct Roof Out, hit straight over the boundary!`;
-          break;
-        case 'wall_catch':
-          commentaryText = `OUT! Wall rebound catch taken cleanly!`;
-          break;
-        case 'wicket':
-          commentaryText = `WICKET! ${batterName} is dismissed!`;
-          break;
-        case 'single':
-          commentaryText = `Single taken by ${batterName}.`;
-          break;
-        case 'two':
-          commentaryText = `Quick double taken between the wickets.`;
-          break;
-        case 'dot':
-          commentaryText = `Dot ball, tight line and length.`;
-          break;
-        case 'wide':
-          commentaryText = `Wide ball signaled by the umpire.`;
-          break;
-        case 'noball':
-          commentaryText = `No Ball! Free hit coming up next!`;
-          break;
-        case 'retired_hurt':
-          commentaryText = `${batterName} retired hurt and walks off.`;
-          break;
-        case 'fifty':
-          commentaryText = `Fifty! Brilliant half century by ${batterName}!`;
-          break;
-        default:
-          commentaryText = `${runs} runs scored`;
-      }
+      const ball: any = {
+        runsBat: runs,
+        isWicket: eventType === 'wicket' || eventType === 'direct_roof' || eventType === 'wall_catch',
+        wicketType: eventType === 'direct_roof' ? 'direct_roof_out'
+                  : eventType === 'wall_catch' ? 'wall_catch'
+                  : wicketType,
+        extraType: eventType === 'wide' ? 'wide' : eventType === 'noball' ? 'noBall' : 'none',
+        isFour: eventType === 'four',
+        isSix: eventType === 'six',
+      };
+      commentaryText = generateCommentary(ball, batterName, bowlerName || '', totalRuns, totalWickets, lang);
     }
 
     this.speak(commentaryText);
