@@ -59,6 +59,7 @@ import {
   Unlock,
   Key,
   Eye,
+  Trophy,
 } from 'lucide-react';
 
 interface LiveMatchScorerProps {
