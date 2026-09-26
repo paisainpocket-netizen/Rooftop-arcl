@@ -229,7 +229,9 @@ export default function App() {
     const unsub = onSyncErrorChange((err) => setSyncError(err));
     return unsub;
   }, []);
-
+useEffect(() => {
+  cricketAudio.initVoices();
+}, []);
   // Always resolve to the CURRENT player record from the live `players`
   // array — re-derives automatically whenever `players` updates too, so the
   // open profile modal never goes stale even mid-view.
