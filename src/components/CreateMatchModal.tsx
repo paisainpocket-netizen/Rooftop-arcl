@@ -89,7 +89,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setViceCaptainA(teamA.players[1]?.id || '');
       setKeeperA(teamA.players[3]?.id || teamA.players[0]?.id || '');
     }
-  }, [teamAId, teamA, playersPerSide]);
+  }, [teamAId,  playersPerSide]);
 
   React.useEffect(() => {
     if (teamB) {
@@ -99,7 +99,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setViceCaptainB(teamB.players[1]?.id || '');
       setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
     }
-  }, [teamBId, teamB, playersPerSide]);
+  }, [teamBId,  playersPerSide]);
 
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinnerId, setTossWinnerId] = useState<string>('');
