@@ -35,7 +35,6 @@ class CricketAudioEngine {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
 
-      // Noise burst for crack
       const bufferSize = this.ctx.sampleRate * 0.05;
       const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
       const output = buffer.getChannelData(0);
@@ -62,7 +61,6 @@ class CricketAudioEngine {
       whiteNoise.start(now);
       whiteNoise.stop(now + 0.05);
 
-      // Sub-thump tone
       const osc = this.ctx.createOscillator();
       const oscGain = this.ctx.createGain();
       osc.type = 'triangle';
@@ -88,7 +86,7 @@ class CricketAudioEngine {
       if (!this.ctx) return;
       this.playBatHit();
 
-      const notes = [523.25, 659.25, 783.99, 1046.5]; // C5, E5, G5, C6
+      const notes = [523.25, 659.25, 783.99, 1046.5];
       notes.forEach((freq, idx) => {
         if (!this.ctx) return;
         const now = this.ctx.currentTime + 0.08 + idx * 0.08;
@@ -117,7 +115,6 @@ class CricketAudioEngine {
       this.playBatHit();
 
       const now = this.ctx.currentTime;
-      // Rising sweep
       const osc = this.ctx.createOscillator();
       const gain = this.ctx.createGain();
       osc.type = 'triangle';
@@ -132,7 +129,6 @@ class CricketAudioEngine {
       osc.start(now + 0.05);
       osc.stop(now + 0.5);
 
-      // Cheering chords
       const chords = [523.25, 659.25, 783.99, 1046.5, 1318.5];
       chords.forEach((freq) => {
         if (!this.ctx) return;
@@ -159,7 +155,6 @@ class CricketAudioEngine {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
 
-      // Stumps rattle / crash
       const osc1 = this.ctx.createOscillator();
       const gain1 = this.ctx.createGain();
       osc1.type = 'sawtooth';
@@ -174,7 +169,6 @@ class CricketAudioEngine {
       osc1.start(now);
       osc1.stop(now + 0.4);
 
-      // Buzzer note
       const osc2 = this.ctx.createOscillator();
       const gain2 = this.ctx.createGain();
       osc2.type = 'square';
@@ -199,7 +193,6 @@ class CricketAudioEngine {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
 
-      // Double siren
       [0, 0.15, 0.3].forEach((delay) => {
         if (!this.ctx) return;
         const osc = this.ctx.createOscillator();
@@ -285,7 +278,6 @@ class CricketAudioEngine {
       if (!this.ctx) return;
       const now = this.ctx.currentTime;
 
-      // Triple stump crash for the 3 wickets
       [0, 0.25, 0.5].forEach((delay) => {
         if (!this.ctx) return;
         const t = now + delay;
@@ -302,7 +294,6 @@ class CricketAudioEngine {
         osc.stop(t + 0.35);
       });
 
-      // Crowd roar: layered filtered noise swell
       const roarStart = now + 0.6;
       const duration = 2.2;
       const bufferSize = Math.floor(this.ctx.sampleRate * duration);
@@ -331,7 +322,6 @@ class CricketAudioEngine {
       noise.start(roarStart);
       noise.stop(roarStart + duration);
 
-      // Triumphant chord over the roar
       const chords = [523.25, 659.25, 783.99, 987.77, 1046.5];
       chords.forEach((freq) => {
         if (!this.ctx) return;
@@ -352,7 +342,8 @@ class CricketAudioEngine {
   }
 
   private isVoiceEnabled: boolean = true;
-  private commentaryLanguage: 'pa' | 'hi' | 'en' = 'pa'; // Default authentic Punjabi!
+  private commentaryLanguage: 'pa' | 'hi' | 'en' = 'pa';
+  private cachedVoices: SpeechSynthesisVoice[] = [];
 
   public setVoiceEnabled(enabled: boolean) {
     this.isVoiceEnabled = enabled;
@@ -384,38 +375,65 @@ class CricketAudioEngine {
     return this.commentaryLanguage;
   }
 
+  // Preload voices — browsers load them async, call this once at app startup
+  public initVoices() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    const load = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length > 0) this.cachedVoices = v;
+    };
+    load();
+    window.speechSynthesis.onvoiceschanged = load;
+  }
+
+  private pickVoice(langPrefixes: string[], preferMale: boolean = true): SpeechSynthesisVoice | undefined {
+    const voices = this.cachedVoices.length ? this.cachedVoices : window.speechSynthesis.getVoices();
+    const maleNames = ['male', 'hemant', 'ravi', 'david', 'daniel', 'rishi', 'prabhat'];
+    const femaleNames = ['female', 'heera', 'lekha', 'veena', 'zira', 'samantha'];
+
+    for (const prefix of langPrefixes) {
+      const matches = voices.filter(v => v.lang.toLowerCase().startsWith(prefix));
+      if (matches.length === 0) continue;
+
+      if (preferMale) {
+        const male = matches.find(v => maleNames.some(n => v.name.toLowerCase().includes(n)));
+        if (male) return male;
+        const nonFemale = matches.find(v => !femaleNames.some(n => v.name.toLowerCase().includes(n)));
+        if (nonFemale) return nonFemale;
+      }
+      return matches[0];
+    }
+    return undefined;
+  }
+
   // Voice Commentary Synthesizer via Web Speech API
   public speak(text: string, rate: number = 1.05) {
     if (!this.isVoiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       return;
     }
     try {
-      window.speechSynthesis.cancel(); // cancel previous speech to prevent lagging
+      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = rate;
-      utterance.pitch = 1.05;
+      utterance.pitch = 1.0;
       utterance.volume = 1.0;
-      
+
       const lang = this.getCommentaryLanguage();
-      const voices = window.speechSynthesis.getVoices();
+      let voice: SpeechSynthesisVoice | undefined;
 
       if (lang === 'pa') {
-        // Punjabi voice or fallback to Hindi / Indian English with clear pronunciation
-        const paVoice = voices.find(v => v.lang.startsWith('pa') || v.lang.includes('pa-IN')) ||
-                        voices.find(v => v.lang.startsWith('hi') || v.lang.includes('hi-IN')) ||
-                        voices.find(v => v.lang.includes('en-IN'));
-        if (paVoice) utterance.voice = paVoice;
-        utterance.lang = paVoice ? paVoice.lang : 'hi-IN';
+        voice = this.pickVoice(['pa']) || this.pickVoice(['hi']) || this.pickVoice(['en-in']) || this.pickVoice(['en']);
       } else if (lang === 'hi') {
-        const hiVoice = voices.find(v => v.lang.startsWith('hi') || v.lang.includes('hi-IN')) ||
-                        voices.find(v => v.lang.includes('en-IN'));
-        if (hiVoice) utterance.voice = hiVoice;
-        utterance.lang = hiVoice ? hiVoice.lang : 'hi-IN';
+        voice = this.pickVoice(['hi']) || this.pickVoice(['en-in']) || this.pickVoice(['en']);
       } else {
-        const enVoice = voices.find(v => v.lang.includes('en-IN')) ||
-                        voices.find(v => v.lang.startsWith('en'));
-        if (enVoice) utterance.voice = enVoice;
-        utterance.lang = enVoice ? enVoice.lang : 'en-IN';
+        voice = this.pickVoice(['en-in']) || this.pickVoice(['en']);
+      }
+
+      if (voice) {
+        utterance.voice = voice;
+        utterance.lang = voice.lang;
+      } else {
+        utterance.lang = lang === 'pa' || lang === 'hi' ? 'hi-IN' : 'en-IN';
       }
 
       window.speechSynthesis.speak(utterance);
@@ -440,7 +458,6 @@ class CricketAudioEngine {
     if (customText) {
       commentaryText = customText;
     } else if (lang === 'pa') {
-      // Authentic Punjabi Rooftop Commentary
       switch (eventType) {
         case 'six':
           commentaryText = `ਓਹੋ ਹੋ! ${batterName} ਦਾ ਵੱਡਾ ਛੱਕਾ! ਗੇਂਦ ਸਿੱਧੀ ਛੱਤ ਤੇ!`;
@@ -485,7 +502,6 @@ class CricketAudioEngine {
           commentaryText = `${runs} ਰਨ`;
       }
     } else if (lang === 'hi') {
-      // Hindi Commentary
       switch (eventType) {
         case 'six':
           commentaryText = `गगनचुंबी छक्का! ${batterName} ने गेंद को छत के पार भेज दिया!`;
@@ -527,7 +543,6 @@ class CricketAudioEngine {
           commentaryText = `${runs} रन`;
       }
     } else {
-      // English Commentary
       switch (eventType) {
         case 'six':
           commentaryText = `Massive Six! ${batterName} clears the terrace with sheer power!`;
@@ -536,7 +551,7 @@ class CricketAudioEngine {
           commentaryText = `Glorious boundary! Four runs to ${batterName}!`;
           break;
         case 'direct_roof':
-          commentaryText = `OUT! Direct Roof Out, hit straight over the boundary boundary!`;
+          commentaryText = `OUT! Direct Roof Out, hit straight over the boundary!`;
           break;
         case 'wall_catch':
           commentaryText = `OUT! Wall rebound catch taken cleanly!`;
