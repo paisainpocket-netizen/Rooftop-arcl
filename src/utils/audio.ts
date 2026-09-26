@@ -406,13 +406,22 @@ class CricketAudioEngine {
     return undefined;
   }
 
-  // Voice Commentary Synthesizer via Web Speech API
+  // Voice Commentary Synthesizer via Web Speech API.
+  //
+  // IMPORTANT: this used to call window.speechSynthesis.cancel() before
+  // every new line. That immediately killed whatever line was still being
+  // spoken — so a four hit right before an over ended, a hat-trick, or a
+  // "pressure" remark firing close together would each interrupt the
+  // previous one mid-sentence, and only the LAST call to speak() in a
+  // rapid sequence was ever actually heard in full. The Web Speech API
+  // already queues utterances on its own when you just call speak() again
+  // without cancelling first — each line now plays start to finish, then
+  // the next one begins. Nothing else about voice/rate selection changed.
   public speak(text: string, rate: number = 1.05) {
     if (!this.isVoiceEnabled || typeof window === 'undefined' || !('speechSynthesis' in window)) {
       return;
     }
     try {
-      window.speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.rate = rate;
       utterance.pitch = 1.0;
@@ -437,6 +446,17 @@ class CricketAudioEngine {
       }
 
       window.speechSynthesis.speak(utterance);
+    } catch {}
+  }
+
+  // Clears the queue outright — for cases like an Undo, where any
+  // just-queued commentary describing the reverted ball should NOT play at
+  // all (unlike the normal case, where a new correct line should wait its
+  // turn instead of killing what's already speaking).
+  public stopAllSpeech() {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    try {
+      window.speechSynthesis.cancel();
     } catch {}
   }
 
