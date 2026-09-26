@@ -16,9 +16,11 @@ import {
   Zap, 
   Activity,
   Flame,
-  BatteryMedium
+  BatteryMedium,
+  Share2
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
+import { ShareMatchCard } from './ShareMatchCard';
 
 interface MatchesListViewProps {
   matches: Match[];
@@ -65,6 +67,8 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [openActionsForMatchId, setOpenActionsForMatchId] = useState<string | null>(null);
+  // Which match's "Share Squad / Poster" modal is currently open (null = closed)
+  const [shareMatch, setShareMatch] = useState<Match | null>(null);
 
   const isUserAdmin = Boolean(
     loggedInPlayer &&
@@ -350,6 +354,20 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     <span className="text-[10px] font-mono text-slate-400 font-bold">
                       {m.totalOvers} Ov Match
                     </span>
+
+                    {/* Quick one-tap Share button — always visible, no need to open the ⚙ menu */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cricketAudio.playClick();
+                        setShareMatch(m);
+                      }}
+                      title={isScheduled ? 'Share Squad Poster' : 'Share Match Card'}
+                      className="p-1 rounded-lg bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 transition"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+
                     <div className="relative">
                       <button
                         onClick={() => {
@@ -382,6 +400,15 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                               className="w-full text-left px-3.5 py-2 text-xs font-bold text-slate-200 hover:bg-slate-900"
                             >
                               📄 View Scorecard
+                            </button>
+                            <button
+                              onClick={() => {
+                                setOpenActionsForMatchId(null);
+                                setShareMatch(m);
+                              }}
+                              className="w-full text-left px-3.5 py-2 text-xs font-bold text-emerald-400 hover:bg-slate-900"
+                            >
+                              📤 {isScheduled ? 'Share Squad Poster' : 'Share Match Card'}
                             </button>
                             {canUserDelete && (
                               <button
@@ -610,6 +637,19 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Share Squad / Match Card Modal — reuses the same ShareMatchCard
+          component used inside live scoring. ShareMatchCard already
+          detects match.status !== 'live' && !== 'completed' internally
+          and renders the squad-lineup poster instead of a score poster,
+          so no extra logic is needed here — just open it with the picked match. */}
+      {shareMatch && (
+        <ShareMatchCard
+          isOpen={true}
+          onClose={() => setShareMatch(null)}
+          match={shareMatch}
+        />
       )}
     </div>
   );
