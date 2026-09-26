@@ -82,8 +82,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
 
   React.useEffect(() => {
-    if (teamA) {
-      const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id);
+    if (teamA && teamA.players) {
+      const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id || p);
       setPlayingSquadA(selected);
       setCaptainA(teamA.players[0]?.id || '');
       setViceCaptainA(teamA.players[1]?.id || '');
@@ -92,14 +92,14 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   }, [teamAId,  playersPerSide]);
 
   React.useEffect(() => {
-    if (teamB) {
-      const selected = teamB.players.slice(0, playersPerSide).map((p) => p.id);
+    if (teamB && teamB.players) {
+      const selected = teamB.players.slice(0, playersPerSide).map(p => p.id || p);
       setPlayingSquadB(selected);
       setCaptainB(teamB.players[0]?.id || '');
       setViceCaptainB(teamB.players[1]?.id || '');
       setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
     }
-  }, [teamBId,  playersPerSide]);
+  }, [teamBId, playersPerSide]);
 
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinnerId, setTossWinnerId] = useState<string>('');
