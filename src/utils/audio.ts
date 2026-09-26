@@ -408,6 +408,41 @@ class CricketAudioEngine {
     return undefined;
   }
 
+  // Does a REAL voice exist for this language prefix on this device? Used
+  // to decide which language to actually GENERATE commentary text in — no
+  // point generating Punjabi (Gurmukhi script) text if there's no Punjabi
+  // voice available, because whatever fallback voice gets picked instead
+  // (Hindi/English) cannot correctly read Gurmukhi script and ends up
+  // sounding garbled / "ajeeb". Text language and voice language must
+  // always match.
+  private hasVoiceFor(langPrefix: string): boolean {
+    const voices = this.cachedVoices.length
+      ? this.cachedVoices
+      : (typeof window !== 'undefined' && 'speechSynthesis' in window ? window.speechSynthesis.getVoices() : []);
+    return voices.some((v) => v.lang.toLowerCase().startsWith(langPrefix));
+  }
+
+  // Resolves the user's preferred commentary language down to a language
+  // this device/browser can ACTUALLY speak correctly (a real matching
+  // voice exists for it). Both text generation (announceBallEvent) and
+  // voice selection (speak) call this SAME function, so they always stay
+  // in sync — this is what fixes the mismatched-script "ajeeb" audio,
+  // where Punjabi text was generated but no Punjabi voice existed, so a
+  // Hindi/English voice tried (and failed) to read Gurmukhi script.
+  private getEffectiveLang(): 'pa' | 'hi' | 'en' {
+    const preferred = this.getCommentaryLanguage();
+    if (preferred === 'pa') {
+      if (this.hasVoiceFor('pa')) return 'pa';
+      if (this.hasVoiceFor('hi')) return 'hi';
+      return 'en';
+    }
+    if (preferred === 'hi') {
+      if (this.hasVoiceFor('hi')) return 'hi';
+      return 'en';
+    }
+    return 'en';
+  }
+
   // Voice Commentary Synthesizer via Web Speech API.
   //
   // IMPORTANT: this used to call window.speechSynthesis.cancel() before
@@ -429,7 +464,7 @@ class CricketAudioEngine {
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      const lang = this.getCommentaryLanguage();
+      const lang = this.getEffectiveLang();
       let voice: SpeechSynthesisVoice | undefined;
 
       if (lang === 'pa') {
@@ -470,6 +505,10 @@ class CricketAudioEngine {
   // receives into the shape generateCommentary() expects, and speaks
   // whatever text comes back. Edit wording only in commentary.ts; never
   // add text strings back in here.
+  //
+  // Language used for the TEXT is getEffectiveLang() (not the raw user
+  // preference) so it always matches whatever voice speak() ends up
+  // picking on this device — see getEffectiveLang() above.
   public announceBallEvent(params: {
     eventType: 'dot' | 'single' | 'two' | 'three' | 'four' | 'six' | 'wicket' | 'wide' | 'noball' | 'direct_roof' | 'wall_catch' | 'retired_hurt' | 'fifty' | 'century' | 'win';
     batterName: string;
@@ -481,7 +520,7 @@ class CricketAudioEngine {
     totalWickets?: number;
   }) {
     if (!this.isVoiceEnabled) return;
-    const lang = this.getCommentaryLanguage();
+    const lang = this.getEffectiveLang();
     const { eventType, batterName, bowlerName, runs = 0, customText, wicketType, totalRuns = 0, totalWickets = 0 } = params;
 
     let commentaryText = '';
