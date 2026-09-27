@@ -309,7 +309,12 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             const scoreA = buildScoreLine(m, m.teamA.id);
             const scoreB = buildScoreLine(m, m.teamB.id);
             const actionsOpen = openActionsForMatchId === m.id;
-            const cardTitle = m.tournamentName || m.name || `${m.teamA.name} vs ${m.teamB.name}`;
+            // Two separate labels, always shown together: the match's own
+            // number/name (e.g. "Match 16") never disappears, and the
+            // league/tournament name shows alongside it whenever the match
+            // belongs to one — neither one replaces the other.
+            const matchNumberLabel = m.name || '';
+            const leagueTitle = m.tournamentName || `${m.teamA.name} vs ${m.teamB.name}`;
 
             const inn1Total = m.innings1?.totalRuns || 0;
             const inn2Total = m.innings2?.totalRuns || 0;
@@ -324,7 +329,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             return (
               <div
                 key={m.id}
-                className={`rounded-3xl border transition-all duration-200 overflow-hidden flex flex-col justify-between shadow-xl relative ${
+                className={`rounded-2xl border transition-all duration-200 overflow-hidden shadow-lg relative ${
                   isLive
                     ? 'bg-slate-900 border-amber-500/40 shadow-amber-500/5 ring-1 ring-amber-500/20'
                     : isCompleted
@@ -332,30 +337,32 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     : 'bg-slate-900/60 border-slate-800/80'
                 }`}
               >
-                {/* TV Graphic Top Bar */}
-                <div className="bg-slate-950 px-4 py-2 border-b border-slate-800/80 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider flex items-center gap-1 ${
-                      isLive 
-                        ? 'bg-rose-600 text-white animate-pulse'
-                        : isCompleted
-                        ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
-                        : 'bg-slate-800 text-slate-300'
-                    }`}>
-                      {isLive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
-                      {isLive ? 'LIVE ON AIR' : isCompleted ? 'RESULT' : 'UPCOMING'}
-                    </span>
-                    <span className="text-xs font-black text-amber-400 truncate max-w-[190px] sm:max-w-xs">
-                      {cardTitle}
-                    </span>
+                {/* Header: status pill + full match/league name + share + settings */}
+                <div className="px-3.5 pt-3 pb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider items-center gap-1 ${
+                        isLive
+                          ? 'bg-rose-600 text-white animate-pulse'
+                          : isCompleted
+                          ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                          : 'bg-slate-800 text-slate-300'
+                      }`}>
+                        {isLive && <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />}
+                        {isLive ? 'LIVE ON AIR' : isCompleted ? 'RESULT' : 'UPCOMING'}
+                      </span>
+                      {matchNumberLabel && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-cyan-950/70 text-cyan-300 border border-cyan-800/60">
+                          {matchNumberLabel}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-black text-amber-400 leading-snug break-words">
+                      {leagueTitle}
+                    </h3>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-[10px] font-mono text-slate-400 font-bold">
-                      {m.totalOvers} Ov Match
-                    </span>
-
-                    {/* Quick one-tap Share button — always visible, no need to open the ⚙ menu */}
+                  <div className="flex items-center gap-1.5 shrink-0">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -363,7 +370,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                         setShareMatch(m);
                       }}
                       title={isScheduled ? 'Share Squad Poster' : 'Share Match Card'}
-                      className="p-1 rounded-lg bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 transition"
+                      className="p-1.5 rounded-lg bg-emerald-900/60 hover:bg-emerald-800 text-emerald-300 transition"
                     >
                       <Share2 className="w-3.5 h-3.5" />
                     </button>
@@ -374,7 +381,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                           cricketAudio.playClick();
                           setOpenActionsForMatchId(actionsOpen ? null : m.id);
                         }}
-                        className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
                       >
                         <Settings className="w-3.5 h-3.5" />
                       </button>
@@ -450,125 +457,100 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Scoreboard Body (VIP Premium Design & Fully Clickable) */}
-                <div 
+                {/* Compact score rows — click anywhere to open the match */}
+                <div
                   onClick={() => {
                     if (!actionsOpen) {
                       onSelectMatch(m);
                       cricketAudio.playClick();
                     }
                   }}
-                  className="p-4 space-y-3 cursor-pointer group"
+                  className="px-3.5 pb-2.5 cursor-pointer space-y-1"
                 >
-                  <div className="space-y-2.5">
-                    {(() => {
-                      const isTestMatch = m.matchFormat === 'test' || m.settings?.matchType?.includes('Test');
-                      const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(Boolean);
-                      
-                      const renderTeamRow = (team, scoreInfo, isBatting) => {
-                        const teamInns = isTestMatch ? allInnings.filter(i => i.teamId === team.id) : [];
-                        
-                        return (
-                          <div className={`p-3 rounded-2xl flex items-center justify-between transition-all duration-300 ${
-                            isBatting 
-                              ? 'bg-gradient-to-r from-amber-500/10 to-orange-500/5 border border-amber-500/30 shadow-[0_0_15px_rgba(245,158,11,0.05)]' 
-                              : 'bg-slate-900/60 border border-slate-800/80 group-hover:border-slate-700'
-                          }`}>
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-[13px] font-black shadow-inner shrink-0 ${
-                                team.id === m.teamA.id 
-                                  ? 'bg-gradient-to-br from-emerald-900/80 to-emerald-950 border border-emerald-500/30 text-emerald-400' 
-                                  : 'bg-gradient-to-br from-cyan-900/80 to-cyan-950 border border-cyan-500/30 text-cyan-400'
-                              }`}>
-                                {team.shortName || team.name.slice(0, 3).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <span className="text-sm font-black text-slate-100 block truncate">{team.name}</span>
-                                {isBatting && (
-                                  <span className="text-[9px] font-black uppercase text-amber-500 font-mono tracking-widest flex items-center gap-1.5 mt-0.5">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" /> Batting
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                  {(() => {
+                    const isTestMatch = m.matchFormat === 'test' || m.settings?.matchType?.includes('Test');
+                    const allInnings = [m.innings1, m.innings2, m.innings3, m.innings4].filter(Boolean);
 
-                            <div className="text-right font-mono flex flex-col justify-center">
-                              {isTestMatch ? (
-                                teamInns.length > 0 ? (
-                                  <div className="flex flex-col gap-1 items-end">
-                                    {teamInns.map((ti, idx) => (
-                                      <div key={idx} className="flex items-center gap-2 leading-none">
-                                        <span className="text-[9px] text-slate-500 font-sans uppercase tracking-wider font-bold">Inn {idx+1}</span>
-                                        <span className="text-sm font-black text-white">{ti.totalRuns}<span className="text-slate-400 text-xs">/{ti.totalWickets}</span></span>
-                                        <span className="text-[10px] text-slate-400 w-10 text-right">({ti.oversCompleted}.{ti.ballsInCurrentOver})</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : (
-                                  <span className="text-xs text-slate-500 italic font-sans font-medium">Yet to bat</span>
-                                )
-                              ) : (
-                                scoreInfo ? (
-                                  <>
-                                    <span className="text-lg font-black text-white leading-none">
-                                      {scoreInfo.runs}<span className="text-slate-400 text-sm">/{scoreInfo.wickets}</span>
-                                    </span>
-                                    <span className="text-[10px] text-slate-500 block font-sans font-bold mt-1">({scoreInfo.overs} Overs)</span>
-                                  </>
-                                ) : (
-                                  <span className="text-xs text-slate-500 italic font-sans font-medium">Yet to bat</span>
-                                )
-                              )}
-                            </div>
-                          </div>
-                        );
-                      };
-
+                    const renderRow = (team, scoreInfo, isBatting) => {
+                      const teamInns = isTestMatch ? allInnings.filter((i) => i.teamId === team.id) : [];
                       return (
-                        <>
-                          {renderTeamRow(m.teamA, scoreA, scoreA?.isBattingNow)}
-                          {renderTeamRow(m.teamB, scoreB, scoreB?.isBattingNow)}
-                        </>
-                      );
-                    })()}
-                  </div>
+                        <div
+                          className={`flex items-center justify-between gap-2 text-xs ${
+                            isBatting ? 'font-black text-amber-300' : 'font-bold text-slate-200'
+                          }`}
+                        >
+                          <span className="flex items-center gap-1.5 min-w-0 truncate">
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                team.id === m.teamA.id ? 'bg-emerald-400' : 'bg-cyan-400'
+                              } ${isBatting ? 'animate-pulse' : ''}`}
+                            />
+                            <span className="truncate">{team.name}</span>
+                            {isBatting && <span className="text-[8px] text-amber-500 shrink-0">●</span>}
+                          </span>
 
-                  {/* Match Situation Context Bar */}
-                  <div className="px-3 py-2.5 rounded-xl bg-slate-950/80 border border-slate-800/60 flex items-center justify-between text-[11px] group-hover:border-slate-700/80 transition-colors">
-                    <div className="flex items-center gap-2 text-slate-400 truncate">
+                          <span className="font-mono shrink-0 text-right">
+                            {isTestMatch ? (
+                              teamInns.length > 0 ? (
+                                teamInns
+                                  .map((ti) => `${ti.totalRuns}-${ti.totalWickets}`)
+                                  .join(' & ')
+                              ) : (
+                                <span className="text-slate-500 italic font-sans font-medium">Yet to bat</span>
+                              )
+                            ) : scoreInfo ? (
+                              <>
+                                {scoreInfo.runs}-{scoreInfo.wickets}
+                                <span className="text-slate-500 font-sans"> ({scoreInfo.overs})</span>
+                              </>
+                            ) : (
+                              <span className="text-slate-500 italic font-sans font-medium">Yet to bat</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    };
+
+                    return (
+                      <>
+                        {renderRow(m.teamA, scoreA, scoreA?.isBattingNow)}
+                        {renderRow(m.teamB, scoreB, scoreB?.isBattingNow)}
+                      </>
+                    );
+                  })()}
+
+                  {/* Venue • full date/time • live situation / result */}
+                  <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 pt-1.5 mt-1 border-t border-slate-800/60">
+                    <span className="flex items-center gap-1 min-w-0 truncate">
                       <MapPin className="w-3 h-3 text-emerald-500 shrink-0" />
-                      <span className="truncate font-medium">{m.venue || 'Rooftop Arena'}</span>
-                    </div>
+                      <span className="truncate">{m.venue || 'Rooftop Arena'}</span>
+                      <span className="text-slate-600">•</span>
+                      <span className="truncate">{m.date || 'Today'}</span>
+                    </span>
 
                     {isLive && currentInnNum === 2 && targetRuns ? (
-                      <span className="font-mono font-bold text-amber-400 shrink-0 bg-amber-500/10 px-2 py-0.5 rounded-md">
-                        Target: {targetRuns} (CRR: {crr})
+                      <span className="font-mono font-bold text-amber-400 shrink-0">
+                        Need {Math.max(0, targetRuns - (liveInnings?.totalRuns || 0))} (CRR {crr})
                       </span>
                     ) : isLive ? (
-                      <span className="font-mono font-bold text-emerald-400 shrink-0 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-                        CRR: {crr}
-                      </span>
+                      <span className="font-mono font-bold text-emerald-400 shrink-0">CRR {crr}</span>
                     ) : isCompleted && m.result ? (
-                      <span className="font-bold text-emerald-400 truncate shrink-0 bg-emerald-500/10 px-2 py-0.5 rounded-md">
-                        🏆 {m.result.summary}
-                      </span>
-                    ) : (
-                      <span className="text-slate-400 font-bold">{m.date || 'Today'}</span>
-                    )}
+                      <span className="font-bold text-emerald-400 truncate shrink-0">🏆 {m.result.summary}</span>
+                    ) : null}
                   </div>
                 </div>
 
-                {/* Bottom CTA Action Button */}
-                <div className="px-4 py-3 bg-slate-950 border-t border-slate-800 flex items-center justify-between gap-2 rounded-b-3xl">
-                  <div className="text-[10px] text-slate-500 font-mono truncate font-medium">
+                {/* Footer: creator + primary action */}
+                <div className="px-3.5 py-2 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between gap-2">
+                  <span className="text-[10px] text-slate-500 font-mono truncate font-medium">
                     {m.delegatedScorerProfileId ? (
                       <span className="text-amber-500 font-bold flex items-center gap-1">
-                        <BatteryMedium className="w-3.5 h-3.5" /> Scorer: {m.delegatedScorerName || m.delegatedScorerProfileId}
+                        <BatteryMedium className="w-3 h-3" /> {m.delegatedScorerName || m.delegatedScorerProfileId}
                       </span>
                     ) : (
                       <span>By {m.creatorName || m.creatorProfileId || 'Official'}</span>
                     )}
-                  </div>
+                  </span>
 
                   <button
                     onClick={(e) => {
@@ -576,18 +558,19 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       onSelectMatch(m);
                       cricketAudio.playClick();
                     }}
-                    className={`px-5 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 shadow-lg transition-all cursor-pointer active:scale-95 shrink-0 ${
+                    className={`px-3.5 py-1.5 rounded-lg text-[11px] font-black flex items-center gap-1.5 shadow-md transition-all cursor-pointer active:scale-95 shrink-0 ${
                       canScore && !isCompleted
-                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 shadow-orange-500/20 hover:scale-105'
-                        : 'bg-slate-800 hover:bg-slate-700 text-white hover:scale-105'
+                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950'
+                        : 'bg-slate-800 hover:bg-slate-700 text-white'
                     }`}
                   >
-                    <Play className="w-3.5 h-3.5 fill-current" />
+                    <Play className="w-3 h-3 fill-current" />
                     <span>{isCompleted ? 'Scorecard' : canScore ? 'Score Match' : 'Watch Live'}</span>
                   </button>
                 </div>
               </div>
             );
+
           })
         )}
       </div>
