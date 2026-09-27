@@ -198,7 +198,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   const displayInnings = getDisplayInnings(viewInningsNum);
 
-    const playingPlayersA = useMemo(() => {
+  const playingPlayersA = useMemo(() => {
     if (match.playingSquadA && match.playingSquadA.length > 0) {
       const filtered = match?.teamA?.players?.filter(
         (p) => match.playingSquadA?.includes(p.id) || (p.profileId && match.playingSquadA?.includes(p.profileId))
@@ -260,14 +260,13 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     match.status !== 'completed' &&
     confirmedInningsSetupFor !== currentInningsNum;
 
-  // Active players with clean All-Out handling (Point 4: no invalid batsman fallback on all out)
-  const striker = isTeamAllOut
-    ? null
-    : (battingSquad.find((p) => p?.id === match?.currentStrikerId) || battingSquad[0]);
+  // Point 4 Fix: All-out hone par striker/non-striker ID blank nahi hoti,
+  // safe fallback ke liye current id ya pehla player hi rakha jata hai.
+  const striker = battingSquad.find((p) => p?.id === match?.currentStrikerId) || battingSquad[0];
 
-  const nonStriker = isTeamAllOut
-    ? null
-    : (battingSquad.find((p) => p?.id === match?.currentNonStrikerId && p?.id !== striker?.id) || battingSquad.find((p) => p?.id !== striker?.id) || battingSquad[0]);
+  const nonStriker = battingSquad.find((p) => p?.id === match?.currentNonStrikerId && p?.id !== striker?.id) || 
+                     battingSquad.find((p) => p?.id !== striker?.id) || 
+                     battingSquad[0];
 
   const bowler = bowlingSquad.find((p) => p?.id === match?.currentBowlerId) || bowlingSquad[0];
 
@@ -3288,7 +3287,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                       isCurrent
                         ? 'bg-cyan-600/20 border-cyan-500 text-cyan-300 font-black'
                         : isOverLimit
-                        ? 'bg-amber-950/20 border-amber-800/60 text-amber-300 hover:bg-amber-900/30'
+                        ? 'bg-rose-950/20 border-rose-800/60 text-rose-300 hover:bg-rose-900/30'
                         : isDarkMode
                         ? 'bg-slate-950 border-slate-800 hover:border-cyan-500/50'
                         : 'bg-slate-50 border-slate-200 hover:bg-cyan-50'
@@ -3298,8 +3297,8 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                       <div className="flex items-center gap-1.5">
                         <span className="font-black text-xs block text-white">{p.name}</span>
                         {isOverLimit && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-bold">
-                            Quota Finished
+                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-500/20 text-rose-400 border border-rose-500/30 font-bold">
+                            Limit Reached
                           </span>
                         )}
                       </div>
@@ -4052,4 +4051,4 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       )}
     </div>
   );
-      }
+};
