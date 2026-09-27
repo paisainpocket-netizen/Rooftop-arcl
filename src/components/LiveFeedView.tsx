@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Match, Tournament, Team, Player } from '../types/cricket';
 import { 
   Play, Trophy, Sparkles, Plus, Eye, Radio, Flame, 
@@ -100,6 +100,14 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   const handleCreateMatch = onNewMatch || onOpenCreateMatch || (() => {});
   const handleTournaments = onOpenTournaments || onSelectTournamentTab || (() => {});
 
+  // Master Admin account — same rule used across the app (MatchesListView,
+  // TournamentManager, etc.): only the admin profile or a match's own
+  // creator is allowed to delete it.
+  const isUserAdmin = Boolean(
+    loggedInPlayer &&
+    loggedInPlayer.profileId === 'ARCL-001'
+  );
+
   const [openActionMatchId, setOpenActionMatchId] = useState<string | null>(null);
   const [matchToDelete, setMatchToDelete] = useState<Match | null>(null);
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
@@ -146,67 +154,6 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
     setMatchToDelete(null);
   };
 
-  const previousBallCountsRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    liveMatches.forEach((m) => {
-      const currentInnNum = m.currentInningsNumber || 1;
-      const currentInn = currentInnNum === 1 ? m.innings1 : m.innings2;
-      if (!currentInn) return;
-
-      const balls = currentInn.balls || [];
-      const newCount = balls.length;
-      const prevCount = previousBallCountsRef.current[m.id];
-
-      if (prevCount !== undefined && newCount > prevCount) {
-        const latestBall = balls[balls.length - 1];
-        if (latestBall) {
-          if (latestBall.isWicket) {
-            cricketAudio.playWicket();
-          } else if (latestBall.isSix || latestBall.runsBat === 6) {
-            cricketAudio.playSix();
-          } else if (latestBall.isFour || latestBall.runsBat === 4) {
-            cricketAudio.playFour();
-          } else if (latestBall.extraType === 'none') {
-            cricketAudio.playBatHit();
-          }
-
-          let eventType:
-            | 'dot' | 'single' | 'two' | 'three' | 'four' | 'six'
-            | 'wicket' | 'wide' | 'noball' = 'dot';
-
-          if (latestBall.isWicket) {
-            eventType = 'wicket';
-          } else if (latestBall.extraType === 'wide') {
-            eventType = 'wide';
-          } else if (latestBall.extraType === 'noBall') {
-            eventType = 'noball';
-          } else if (latestBall.runsBat === 6) {
-            eventType = 'six';
-          } else if (latestBall.runsBat === 4) {
-            eventType = 'four';
-          } else if (latestBall.runsBat === 3) {
-            eventType = 'three';
-          } else if (latestBall.runsBat === 2) {
-            eventType = 'two';
-          } else if (latestBall.runsBat === 1) {
-            eventType = 'single';
-          } else {
-            eventType = 'dot';
-          }
-
-          cricketAudio.announceBallEvent({
-            eventType,
-            batterName: latestBall.strikerName || 'Batsman',
-            bowlerName: latestBall.bowlerName,
-            runs: latestBall.runsBat,
-          });
-        }
-      }
-
-      previousBallCountsRef.current[m.id] = newCount;
-    });
-  }, [liveMatches]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200 select-none">
@@ -363,6 +310,17 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               const recentBalls = [...(currentInn?.balls || [])].slice(-6);
               const isActionOpen = openActionMatchId === m.id;
 
+              // Only the match's creator (or the Master Admin) may delete
+              // it — same rule as MatchesListView.tsx. This was previously
+              // missing here, which let ANY logged-in user delete ANY live
+              // match from this feed card.
+              const isCreator = Boolean(
+                loggedInPlayer &&
+                ((m.creatorId && m.creatorId === loggedInPlayer.id) ||
+                 (m.creatorProfileId && loggedInPlayer.profileId && m.creatorProfileId.toLowerCase() === loggedInPlayer.profileId.toLowerCase()))
+              );
+              const canUserDelete = isCreator || isUserAdmin;
+
               return (
                 <div
                   key={m.id}
@@ -414,15 +372,17 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                               >
                                 📄 Scorecard
                               </button>
-                              <button
-                                onClick={() => {
-                                  setOpenActionMatchId(null);
-                                  setMatchToDelete(m);
-                                }}
-                                className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-400 hover:bg-rose-950/40 border-t border-slate-800 mt-1"
-                              >
-                                🗑 Delete Match
-                              </button>
+                              {canUserDelete && (
+                                <button
+                                  onClick={() => {
+                                    setOpenActionMatchId(null);
+                                    setMatchToDelete(m);
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 text-xs font-bold text-rose-400 hover:bg-rose-950/40 border-t border-slate-800 mt-1"
+                                >
+                                  🗑 Delete Match
+                                </button>
+                              )}
                             </div>
                           </>
                         )}
