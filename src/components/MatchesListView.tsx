@@ -410,6 +410,17 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                             >
                               📤 {isScheduled ? 'Share Squad Poster' : 'Share Match Card'}
                             </button>
+                            {isCompleted && canUserDelete && onEditCompletedMatch && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionsForMatchId(null);
+                                  onEditCompletedMatch(m);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-bold text-amber-400 hover:bg-slate-900"
+                              >
+                                ✏️ Edit Completed Match
+                              </button>
+                            )}
                             {canUserDelete && (
                               <button
                                 onClick={() => {
