@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Match, Team, Tournament, MatchSettings, Player } from '../types/cricket';
 import { Plus, X, Trophy, Shield, MapPin, Zap, ArrowLeft, Settings, Calendar, Clock, Check } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
@@ -17,6 +17,10 @@ interface CreateMatchModalProps {
   allGlobalPlayers?: Player[];
   onAddPlayerToTeam?: (teamId: string, player: Player) => void;
   loggedInPlayer?: Player | null;
+  // New props for Edit Mode
+  editMatch?: Match | null;
+  isEditMode?: boolean;
+  onUpdateMatchDetails?: (updatedMatch: Match) => void;
 }
 
 export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
@@ -33,6 +37,9 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   allGlobalPlayers = [],
   onAddPlayerToTeam,
   loggedInPlayer = null,
+  editMatch = null,
+  isEditMode = false,
+  onUpdateMatchDetails,
 }) => {
   const [matchName, setMatchName] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState(initialTournamentId || '');
@@ -55,6 +62,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const [totalWickets, setTotalWickets] = useState<number>(10);
   const [wicketsInput, setWicketsInput] = useState<string>('10');
+
+  // New State for Manual Bowler Limit
+  const [maxOversPerBowler, setMaxOversPerBowler] = useState<number>(2);
+  const [maxOversPerBowlerInput, setMaxOversPerBowlerInput] = useState<string>('2');
 
   const [showFormatModal, setShowFormatModal] = useState(false);
 
@@ -81,25 +92,75 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
 
-  React.useEffect(() => {
-    if (teamA && teamA.players) {
+  // Pre-fill data if in Edit Mode
+  useEffect(() => {
+    if (isEditMode && editMatch) {
+      setMatchName(editMatch.name || '');
+      setTeamAId(editMatch.teamA?.id || '');
+      setTeamBId(editMatch.teamB?.id || '');
+      setSelectedTournamentId(editMatch.tournamentId || '');
+      setMatchStage((editMatch.matchStage as any) || 'league');
+      setVenue(editMatch.venue || 'Rooftop Arena, Amritsar');
+      
+      if (editMatch.date) {
+        const parts = editMatch.date.split(' ');
+        if (parts.length >= 1) setMatchDate(parts[0]);
+        if (parts.length >= 2) setMatchTime(parts[1]);
+      }
+
+      setTotalOvers(editMatch.settings?.maxOvers || 7);
+      setOversInput(String(editMatch.settings?.maxOvers || 7));
+      setPlayersPerSide(editMatch.settings?.playersPerSide || 11);
+      setPlayersPerSideInput(String(editMatch.settings?.playersPerSide || 11));
+      setTotalWickets(editMatch.settings?.maxWickets || 10);
+      setWicketsInput(String(editMatch.settings?.maxWickets || 10));
+
+      const savedLimit = editMatch.settings?.maxOversPerBowler || 2;
+      setMaxOversPerBowler(savedLimit);
+      setMaxOversPerBowlerInput(String(savedLimit));
+
+      if (editMatch.matchFormat === 'test' || editMatch.settings?.matchType?.includes('Test')) {
+        setSelectedFormat('Test Match');
+      } else if (editMatch.settings?.matchType?.includes('T10')) {
+        setSelectedFormat('T10');
+      } else if (editMatch.settings?.matchType?.includes('T20')) {
+        setSelectedFormat('T20');
+      } else {
+        setSelectedFormat('Custom');
+      }
+    }
+  }, [isEditMode, editMatch]);
+
+
+  useEffect(() => {
+    if (teamA && teamA.players && !isEditMode) {
       const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id || p);
       setPlayingSquadA(selected);
       setCaptainA(teamA.players[0]?.id || '');
       setViceCaptainA(teamA.players[1]?.id || '');
       setKeeperA(teamA.players[3]?.id || teamA.players[0]?.id || '');
+    } else if (isEditMode && editMatch) {
+      setPlayingSquadA(editMatch.playingSquadA || []);
+      setCaptainA(editMatch.captainA || '');
+      setViceCaptainA(editMatch.viceCaptainA || '');
+      setKeeperA(editMatch.keeperA || '');
     }
-  }, [teamAId,  playersPerSide]);
+  }, [teamAId,  playersPerSide, isEditMode, editMatch]);
 
-  React.useEffect(() => {
-    if (teamB && teamB.players) {
+  useEffect(() => {
+    if (teamB && teamB.players && !isEditMode) {
       const selected = teamB.players.slice(0, playersPerSide).map(p => p.id || p);
       setPlayingSquadB(selected);
       setCaptainB(teamB.players[0]?.id || '');
       setViceCaptainB(teamB.players[1]?.id || '');
       setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
+    } else if (isEditMode && editMatch) {
+      setPlayingSquadB(editMatch.playingSquadB || []);
+      setCaptainB(editMatch.captainB || '');
+      setViceCaptainB(editMatch.viceCaptainB || '');
+      setKeeperB(editMatch.keeperB || '');
     }
-  }, [teamBId, playersPerSide]);
+  }, [teamBId, playersPerSide, isEditMode, editMatch]);
 
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinnerId, setTossWinnerId] = useState<string>('');
@@ -138,6 +199,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setPlayersPerSideInput('11');
       setTotalWickets(10);
       setWicketsInput('10');
+      setMaxOversPerBowler(2); 
+      setMaxOversPerBowlerInput('2');
     } else if (format === 'T20') {
       setTotalOvers(20);
       setOversInput('20');
@@ -145,6 +208,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setPlayersPerSideInput('11');
       setTotalWickets(10);
       setWicketsInput('10');
+      setMaxOversPerBowler(4); 
+      setMaxOversPerBowlerInput('4');
     } else if (format === 'Club') {
       setTotalOvers(15);
       setOversInput('15');
@@ -152,6 +217,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setPlayersPerSideInput('11');
       setTotalWickets(10);
       setWicketsInput('10');
+      setMaxOversPerBowler(3); 
+      setMaxOversPerBowlerInput('3');
     } else if (format === '100') {
       setTotalOvers(16);
       setOversInput('16');
@@ -159,6 +226,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setPlayersPerSideInput('11');
       setTotalWickets(10);
       setWicketsInput('10');
+      setMaxOversPerBowler(4); 
+      setMaxOversPerBowlerInput('4');
     } else if (format === 'One Day') {
       setTotalOvers(50);
       setOversInput('50');
@@ -166,6 +235,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setPlayersPerSideInput('11');
       setTotalWickets(10);
       setWicketsInput('10');
+      setMaxOversPerBowler(10); 
+      setMaxOversPerBowlerInput('10');
     } else if (format === 'Test Match') {
       setTotalOvers(20);
       setOversInput('20');
@@ -197,32 +268,23 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setWicketsInput(String(clamped));
   };
 
+  const handleBowlerLimitChange = (val: number) => {
+    const clamped = Math.max(1, Math.min(50, val));
+    setMaxOversPerBowler(clamped);
+    setMaxOversPerBowlerInput(String(clamped));
+  };
+
+
   const effectiveSquadA = playingSquadA.length > 0 ? playingSquadA : teamA.players.map((p) => p.id);
   const effectiveSquadB = playingSquadB.length > 0 ? playingSquadB : teamB.players.map((p) => p.id);
 
   const constructMatchObject = (status: 'scheduled' | 'live'): Match => {
     const isTest = selectedFormat === 'Test Match';
-
-    // A "Save Fixture" (status === 'scheduled') is deliberately saved
-    // WITHOUT a decided toss — the toss is asked for later, in App.tsx's
-    // dedicated pendingTossMatch step, the single moment the fixture is
-    // actually opened to start play. Previously this function silently
-    // defaulted tossWinnerId to Team A here even for a fixture (nobody
-    // had picked a toss winner yet), baking a fake "Team A won the toss
-    // and chose to bat" result into innings1/2/3/4's teamId assignments.
-    // That fake result WAS correctly overwritten later when the fixture
-    // was opened and the real toss decided — but only if that second step
-    // ran cleanly. Not baking in a fake toss result at all removes that
-    // redundant duplicate-source-of-truth entirely, so there's nothing
-    // stale left for a later step to depend on overwriting correctly.
     const tossDecided = status === 'live';
     const effectiveTossWinnerId = tossDecided ? (tossWinnerId || teamA.id) : undefined;
     const effectiveTossDecision = tossDecided ? tossDecision : undefined;
 
-    // For a fixture with no decided toss yet, Team A/Team B are just
-    // placeholders for which innings object gets which starting XI — the
-    // real batting/bowling assignment happens (and fully overwrites these)
-    // in App.tsx once the toss is actually decided at match-start time.
+
     const initialBattingTeam = !tossDecided
       ? teamA
       : effectiveTossWinnerId === teamA.id
@@ -231,7 +293,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
     const initialBowlingTeam = initialBattingTeam.id === teamA.id ? teamB : teamA;
 
-    // Get active playing players for initial striker & bowler
     const battingPlayingIds = initialBattingTeam.id === teamA.id ? effectiveSquadA : effectiveSquadB;
     const bowlingPlayingIds = initialBowlingTeam.id === teamA.id ? effectiveSquadA : effectiveSquadB;
 
@@ -243,11 +304,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const bowler = bowlingPlayingPlayers[0] || initialBowlingTeam.players[0] || { id: 'b1', name: 'Bowler' };
 
     return {
-      id: `match-${Date.now()}`,
+      id: isEditMode && editMatch ? editMatch.id : `match-${Date.now()}`,
       name: matchName || `${teamA.name} vs ${teamB.name}`,
-      creatorId: loggedInPlayer?.id,
-      creatorProfileId: loggedInPlayer?.profileId,
-      creatorName: loggedInPlayer?.name,
+      creatorId: isEditMode && editMatch ? editMatch.creatorId : loggedInPlayer?.id,
+      creatorProfileId: isEditMode && editMatch ? editMatch.creatorProfileId : loggedInPlayer?.profileId,
+      creatorName: isEditMode && editMatch ? editMatch.creatorName : loggedInPlayer?.name,
       tournamentId: selectedTournamentId || undefined,
       tournamentName: selectedTour?.name || undefined,
       matchStage: selectedTournamentId ? matchStage : undefined,
@@ -262,20 +323,20 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       viceCaptainB: viceCaptainB || teamB.players[1]?.id,
       keeperA: keeperA || teamA.players[3]?.id || teamA.players[0]?.id,
       keeperB: keeperB || teamB.players[3]?.id || teamB.players[0]?.id,
-      tossWinnerTeamId: effectiveTossWinnerId,
-      tossDecision: effectiveTossDecision,
-      status: status === 'scheduled' ? 'setup' : 'live',
-      currentInningsNumber: 1,
+      tossWinnerTeamId: isEditMode && editMatch ? editMatch.tossWinnerTeamId : effectiveTossWinnerId,
+      tossDecision: isEditMode && editMatch ? editMatch.tossDecision : effectiveTossDecision,
+      status: isEditMode && editMatch ? editMatch.status : (status === 'scheduled' ? 'setup' : 'live'),
+      currentInningsNumber: isEditMode && editMatch ? editMatch.currentInningsNumber : 1,
       totalOvers,
-      isFreeHit: false,
+      isFreeHit: isEditMode && editMatch ? editMatch.isFreeHit : false,
       venue,
       date: matchTime ? `${matchDate} ${matchTime}` : matchDate,
-      createdAt: Date.now(),
+      createdAt: isEditMode && editMatch ? editMatch.createdAt : Date.now(),
       updatedAt: Date.now(),
       settings: {
         maxOvers: totalOvers,
         ballsPerOver: 6,
-        maxOversPerBowler: Math.ceil(totalOvers / 4) || 2,
+        maxOversPerBowler: maxOversPerBowler, // <--- Use manual limit state
         playersPerSide,
         maxWickets: totalWickets,
         allowDirectRoofOut,
@@ -298,10 +359,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         matchFormat: isTest ? 'test' : 'limited_overs',
         oversPerInningsInTest: isTest ? totalOvers : undefined,
       },
-      currentStrikerId: striker.id,
-      currentNonStrikerId: nonStriker.id,
-      currentBowlerId: bowler.id,
-      innings1: {
+      currentStrikerId: isEditMode && editMatch ? editMatch.currentStrikerId : striker.id,
+      currentNonStrikerId: isEditMode && editMatch ? editMatch.currentNonStrikerId : nonStriker.id,
+      currentBowlerId: isEditMode && editMatch ? editMatch.currentBowlerId : bowler.id,
+      innings1: isEditMode && editMatch ? editMatch.innings1 : {
         teamId: initialBattingTeam.id,
         teamName: initialBattingTeam.name,
         totalRuns: 0,
@@ -314,7 +375,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         fallOfWickets: [],
         extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
       },
-      innings2: {
+      innings2: isEditMode && editMatch ? editMatch.innings2 : {
         teamId: initialBowlingTeam.id,
         teamName: initialBowlingTeam.name,
         totalRuns: 0,
@@ -327,7 +388,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         fallOfWickets: [],
         extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
       },
-      innings3: isTest ? {
+      innings3: isEditMode && editMatch ? editMatch.innings3 : (isTest ? {
         teamId: initialBattingTeam.id,
         teamName: initialBattingTeam.name,
         totalRuns: 0,
@@ -339,8 +400,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         bowlingStats: {},
         fallOfWickets: [],
         extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      } : undefined,
-      innings4: isTest ? {
+      } : undefined),
+      innings4: isEditMode && editMatch ? editMatch.innings4 : (isTest ? {
         teamId: initialBowlingTeam.id,
         teamName: initialBowlingTeam.name,
         totalRuns: 0,
@@ -352,11 +413,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         bowlingStats: {},
         fallOfWickets: [],
         extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      } : undefined,
+      } : undefined),
     };
   };
 
-  const handleSaveFixtureOnly = () => {
+  const handleAction = () => {
     cricketAudio.playClick();
     if (!loggedInPlayer) {
       alert('Please login first to create and schedule a match.');
@@ -370,10 +431,18 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       alert('Please select two different teams.');
       return;
     }
+
     const matchObj = constructMatchObject('scheduled');
-    if (onSaveFixture) onSaveFixture(matchObj);
-    onClose();
+
+    if (isEditMode && onUpdateMatchDetails) {
+      onUpdateMatchDetails(matchObj);
+      onClose();
+    } else {
+      if (onSaveFixture) onSaveFixture(matchObj);
+      onClose();
+    }
   };
+
 
   const handleOpenToss = () => {
     cricketAudio.playClick();
@@ -417,7 +486,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
           </button>
           
           <h2 className="text-base font-black tracking-wide text-white uppercase text-center flex-1">
-            {selectedTour ? selectedTour.name : 'GROUP A Match'}
+             {isEditMode ? 'Edit Match Details' : (selectedTour ? selectedTour.name : 'GROUP A Match')}
           </h2>
 
           <button
@@ -479,7 +548,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               <select
                 value={teamAId}
                 onChange={(e) => setTeamAId(e.target.value)}
-                className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate"
+                disabled={isEditMode}
+                className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
                 {teams.map((t) => (
@@ -508,7 +578,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               <select
                 value={teamBId}
                 onChange={(e) => setTeamBId(e.target.value)}
-                className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate"
+                disabled={isEditMode}
+                className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
                 {teams.map((t) => (
@@ -655,19 +726,20 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
           <div className="grid grid-cols-2 gap-3 pt-3">
             <button
               type="button"
-              onClick={handleSaveFixtureOnly}
+              onClick={handleAction}
               className="py-3 rounded-2xl bg-teal-900/80 hover:bg-teal-800 text-teal-200 text-xs font-black tracking-wider uppercase transition cursor-pointer border border-teal-500/30"
             >
-              SAVE FIXTURE
+               {isEditMode ? 'UPDATE DETAILS' : 'SAVE FIXTURE'}
             </button>
-
-            <button
-              type="button"
-              onClick={handleOpenToss}
-              className="py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-black tracking-wider uppercase shadow-lg shadow-emerald-700/30 transition cursor-pointer"
-            >
-              START MATCH
-            </button>
+            {!isEditMode && (
+                <button
+                type="button"
+                onClick={handleOpenToss}
+                className="py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-black tracking-wider uppercase shadow-lg shadow-emerald-700/30 transition cursor-pointer"
+                >
+                START MATCH
+                </button>
+            )}
           </div>
         </div>
       </div>
@@ -879,6 +951,55 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* MANUAL BOWLER LIMIT BOX */}
+            {selectedFormat !== 'Test Match' && (
+              <div className="space-y-1.5 mt-2 pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between bg-emerald-950/20 p-2 rounded-xl border border-emerald-900/30">
+                  <label className="text-xs font-black text-emerald-400 block">Max Overs Per Bowler</label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleBowlerLimitChange(maxOversPerBowler - 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
+                    >
+                      -
+                    </button>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={maxOversPerBowlerInput}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setMaxOversPerBowlerInput(val);
+                        if (val !== '' && !isNaN(Number(val))) {
+                          const num = Number(val);
+                          if (num >= 1 && num <= 50) {
+                            setMaxOversPerBowler(num);
+                          }
+                        }
+                      }}
+                      onBlur={() => {
+                        if (maxOversPerBowlerInput === '' || isNaN(Number(maxOversPerBowlerInput)) || Number(maxOversPerBowlerInput) < 1) {
+                          setMaxOversPerBowlerInput(String(maxOversPerBowler || 2));
+                        } else {
+                          handleBowlerLimitChange(Number(maxOversPerBowlerInput));
+                        }
+                      }}
+                      className="w-14 py-1 px-1 text-center bg-slate-950 border border-emerald-500 rounded-lg text-sm font-mono font-black text-emerald-400 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleBowlerLimitChange(maxOversPerBowler + 1)}
+                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
 
             <button
               type="button"
