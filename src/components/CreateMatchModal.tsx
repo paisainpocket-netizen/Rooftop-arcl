@@ -3,6 +3,27 @@ import { Match, Team, Tournament, MatchSettings, Player } from '../types/cricket
 import { Plus, X, Trophy, Shield, MapPin, Zap, ArrowLeft, Settings, Calendar, Clock, Check } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 
+type FormatName = 'T10' | 'T20' | 'Club' | '100' | 'One Day' | 'Test Match' | 'Custom';
+
+// Starting overs + bowler limit for each format. Everything stays editable.
+const FORMAT_PRESETS: Partial<Record<FormatName, { overs: number; bowler: number | null }>> = {
+  'T10': { overs: 10, bowler: 2 },
+  'T20': { overs: 20, bowler: 4 },
+  'Club': { overs: 15, bowler: 3 },
+  '100': { overs: 16, bowler: 4 },
+  'One Day': { overs: 50, bowler: 10 },
+  'Test Match': { overs: 20, bowler: null },
+};
+
+// Practically no upper cap.
+const MAX_OVERS = 999;
+const MAX_PLAYERS = 99;
+const MAX_WICKETS = 99;
+
+// "No limit" for a bowler is saved as this large number, so the live scorer
+// never shows the limit-reached warning.
+const NO_LIMIT_VALUE = 999;
+
 interface CreateMatchModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -17,7 +38,6 @@ interface CreateMatchModalProps {
   allGlobalPlayers?: Player[];
   onAddPlayerToTeam?: (teamId: string, player: Player) => void;
   loggedInPlayer?: Player | null;
-  // New props for Edit Mode
   editMatch?: Match | null;
   isEditMode?: boolean;
   onUpdateMatchDetails?: (updatedMatch: Match) => void;
@@ -41,6 +61,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   isEditMode = false,
   onUpdateMatchDetails,
 }) => {
+  // A saved fixture (not started yet) can be edited fully and started from here.
+  // Any match that has already started/finished only gets its details edited
+  // (name, venue, date, time) so scorecards and stats are never touched.
+  const isFixtureEdit = Boolean(isEditMode && editMatch && editMatch.status === 'setup');
+  const isDetailsOnlyEdit = Boolean(isEditMode && editMatch && editMatch.status !== 'setup');
+
   const [matchName, setMatchName] = useState('');
   const [selectedTournamentId, setSelectedTournamentId] = useState(initialTournamentId || '');
   const [teamAId, setTeamAId] = useState('');
@@ -53,21 +79,42 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [scorerName, setScorerName] = useState('');
   const [clubSeason, setClubSeason] = useState('2026');
 
-  const [selectedFormat, setSelectedFormat] = useState<'T10' | 'T20' | 'Club' | '100' | 'One Day' | 'Test Match' | 'Custom'>('T10');
+  const [selectedFormat, setSelectedFormat] = useState<FormatName>('T10');
   const [totalOvers, setTotalOvers] = useState<number>(7);
   const [oversInput, setOversInput] = useState<string>('7');
-  
+
   const [playersPerSide, setPlayersPerSide] = useState<number>(11);
   const [playersPerSideInput, setPlayersPerSideInput] = useState<string>('11');
 
   const [totalWickets, setTotalWickets] = useState<number>(10);
   const [wicketsInput, setWicketsInput] = useState<string>('10');
 
-  // New State for Manual Bowler Limit
   const [maxOversPerBowler, setMaxOversPerBowler] = useState<number>(2);
   const [maxOversPerBowlerInput, setMaxOversPerBowlerInput] = useState<string>('2');
+  const [noBowlerLimit, setNoBowlerLimit] = useState<boolean>(false);
 
   const [showFormatModal, setShowFormatModal] = useState(false);
+
+  const [playingSquadA, setPlayingSquadA] = useState<string[]>([]);
+  const [playingSquadB, setPlayingSquadB] = useState<string[]>([]);
+  const [captainA, setCaptainA] = useState<string>('');
+  const [captainB, setCaptainB] = useState<string>('');
+  const [viceCaptainA, setViceCaptainA] = useState<string>('');
+  const [viceCaptainB, setViceCaptainB] = useState<string>('');
+  const [keeperA, setKeeperA] = useState<string>('');
+  const [keeperB, setKeeperB] = useState<string>('');
+
+  const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
+
+  const [showTossModal, setShowTossModal] = useState(false);
+  const [tossWinnerId, setTossWinnerId] = useState<string>('');
+  const [tossDecision, setTossDecision] = useState<'bat' | 'bowl'>('bat');
+
+  const [venue, setVenue] = useState('Rooftop Arena, Amritsar');
+  const [allowDirectRoofOut, setAllowDirectRoofOut] = useState(true);
+  const [allowSingleWallCatch, setAllowSingleWallCatch] = useState(true);
+  const [matchStage, setMatchStage] = useState<'league' | 'eliminator' | 'qualifier1' | 'qualifier2' | 'semifinal1' | 'semifinal2' | 'final'>('league');
+  const [opponentSearchQuery, setOpponentSearchQuery] = useState('');
 
   const teamLookupPool = allTeams && allTeams.length > 0 ? allTeams : teams;
   const blankTeamPlaceholder: Team = {
@@ -81,96 +128,96 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const teamA = teamLookupPool.find((t) => t.id === teamAId) || blankTeamPlaceholder;
   const teamB = teamLookupPool.find((t) => t.id === teamBId) || blankTeamPlaceholder;
 
-  const [playingSquadA, setPlayingSquadA] = useState<string[]>([]);
-  const [playingSquadB, setPlayingSquadB] = useState<string[]>([]);
-  const [captainA, setCaptainA] = useState<string>('');
-  const [captainB, setCaptainB] = useState<string>('');
-  const [viceCaptainA, setViceCaptainA] = useState<string>('');
-  const [viceCaptainB, setViceCaptainB] = useState<string>('');
-  const [keeperA, setKeeperA] = useState<string>('');
-  const [keeperB, setKeeperB] = useState<string>('');
-
-  const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
-
-  // Pre-fill data if in Edit Mode
+  // Pre-fill everything when a saved match is opened. Depends only on the
+  // match id, so live cloud updates never wipe what the user is typing.
   useEffect(() => {
-    if (isEditMode && editMatch) {
-      setMatchName(editMatch.name || '');
-      setTeamAId(editMatch.teamA?.id || '');
-      setTeamBId(editMatch.teamB?.id || '');
-      setSelectedTournamentId(editMatch.tournamentId || '');
-      setMatchStage((editMatch.matchStage as any) || 'league');
-      setVenue(editMatch.venue || 'Rooftop Arena, Amritsar');
-      
-      if (editMatch.date) {
-        const parts = editMatch.date.split(' ');
-        if (parts.length >= 1) setMatchDate(parts[0]);
-        if (parts.length >= 2) setMatchTime(parts[1]);
-      }
+    if (!isEditMode || !editMatch) return;
 
-      setTotalOvers(editMatch.settings?.maxOvers || 7);
-      setOversInput(String(editMatch.settings?.maxOvers || 7));
-      setPlayersPerSide(editMatch.settings?.playersPerSide || 11);
-      setPlayersPerSideInput(String(editMatch.settings?.playersPerSide || 11));
-      setTotalWickets(editMatch.settings?.maxWickets || 10);
-      setWicketsInput(String(editMatch.settings?.maxWickets || 10));
+    setMatchName(editMatch.name || '');
+    setTeamAId(editMatch.teamA?.id || '');
+    setTeamBId(editMatch.teamB?.id || '');
+    setSelectedTournamentId(editMatch.tournamentId || '');
+    setMatchStage((editMatch.matchStage as any) || 'league');
+    setVenue(editMatch.venue || 'Rooftop Arena, Amritsar');
 
-      const savedLimit = editMatch.settings?.maxOversPerBowler || 2;
-      setMaxOversPerBowler(savedLimit);
-      setMaxOversPerBowlerInput(String(savedLimit));
-
-      if (editMatch.matchFormat === 'test' || editMatch.settings?.matchType?.includes('Test')) {
-        setSelectedFormat('Test Match');
-      } else if (editMatch.settings?.matchType?.includes('T10')) {
-        setSelectedFormat('T10');
-      } else if (editMatch.settings?.matchType?.includes('T20')) {
-        setSelectedFormat('T20');
-      } else {
-        setSelectedFormat('Custom');
-      }
+    const rawDate = editMatch.date || editMatch.settings?.date || '';
+    const dm = rawDate.match(/^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))?/);
+    if (dm) {
+      setMatchDate(dm[1]);
+      if (dm[2]) setMatchTime(dm[2]);
     }
-  }, [isEditMode, editMatch]);
 
+    const ov = editMatch.totalOvers || editMatch.settings?.maxOvers || 7;
+    setTotalOvers(ov);
+    setOversInput(String(ov));
+    const pps = editMatch.settings?.playersPerSide || 11;
+    setPlayersPerSide(pps);
+    setPlayersPerSideInput(String(pps));
+    const wk = editMatch.settings?.maxWickets || 10;
+    setTotalWickets(wk);
+    setWicketsInput(String(wk));
 
+    const savedLimit = editMatch.settings?.maxOversPerBowler;
+    if (savedLimit !== undefined && savedLimit >= NO_LIMIT_VALUE) {
+      setNoBowlerLimit(true);
+    } else {
+      setNoBowlerLimit(false);
+      const lim = savedLimit || 2;
+      setMaxOversPerBowler(lim);
+      setMaxOversPerBowlerInput(String(lim));
+    }
+
+    setAllowDirectRoofOut(editMatch.settings?.allowDirectRoofOut ?? true);
+    setAllowSingleWallCatch(editMatch.settings?.allowSingleWallCatch ?? true);
+    setScorerName(editMatch.delegatedScorerProfileId || '');
+
+    const mt = editMatch.settings?.matchType || '';
+    if (editMatch.matchFormat === 'test' || mt.includes('Test')) {
+      setSelectedFormat('Test Match');
+    } else if (mt.includes('T10')) {
+      setSelectedFormat('T10');
+    } else if (mt.includes('T20')) {
+      setSelectedFormat('T20');
+    } else {
+      setSelectedFormat('Custom');
+    }
+  }, [isEditMode, editMatch?.id]);
+
+  // Squad defaults. In edit mode, if the team is unchanged the saved squad
+  // is restored; if the user picks a different team it starts fresh.
   useEffect(() => {
-    if (teamA && teamA.players && !isEditMode) {
-      const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id || p);
-      setPlayingSquadA(selected);
-      setCaptainA(teamA.players[0]?.id || '');
-      setViceCaptainA(teamA.players[1]?.id || '');
-      setKeeperA(teamA.players[3]?.id || teamA.players[0]?.id || '');
-    } else if (isEditMode && editMatch) {
+    if (isEditMode && editMatch && editMatch.teamA?.id === teamAId) {
       setPlayingSquadA(editMatch.playingSquadA || []);
       setCaptainA(editMatch.captainA || '');
       setViceCaptainA(editMatch.viceCaptainA || '');
       setKeeperA(editMatch.keeperA || '');
+      return;
     }
-  }, [teamAId,  playersPerSide, isEditMode, editMatch]);
+    if (teamA && teamA.players) {
+      const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id);
+      setPlayingSquadA(selected);
+      setCaptainA(teamA.players[0]?.id || '');
+      setViceCaptainA(teamA.players[1]?.id || '');
+      setKeeperA(teamA.players[3]?.id || teamA.players[0]?.id || '');
+    }
+  }, [teamAId, isEditMode ? 0 : playersPerSide, editMatch?.id]);
 
   useEffect(() => {
-    if (teamB && teamB.players && !isEditMode) {
-      const selected = teamB.players.slice(0, playersPerSide).map(p => p.id || p);
-      setPlayingSquadB(selected);
-      setCaptainB(teamB.players[0]?.id || '');
-      setViceCaptainB(teamB.players[1]?.id || '');
-      setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
-    } else if (isEditMode && editMatch) {
+    if (isEditMode && editMatch && editMatch.teamB?.id === teamBId) {
       setPlayingSquadB(editMatch.playingSquadB || []);
       setCaptainB(editMatch.captainB || '');
       setViceCaptainB(editMatch.viceCaptainB || '');
       setKeeperB(editMatch.keeperB || '');
+      return;
     }
-  }, [teamBId, playersPerSide, isEditMode, editMatch]);
-
-  const [showTossModal, setShowTossModal] = useState(false);
-  const [tossWinnerId, setTossWinnerId] = useState<string>('');
-  const [tossDecision, setTossDecision] = useState<'bat' | 'bowl'>('bat');
-
-  const [venue, setVenue] = useState('Rooftop Arena, Amritsar');
-  const [allowDirectRoofOut, setAllowDirectRoofOut] = useState(true);
-  const [allowSingleWallCatch, setAllowSingleWallCatch] = useState(true);
-  const [matchStage, setMatchStage] = useState<'league' | 'eliminator' | 'qualifier1' | 'qualifier2' | 'semifinal1' | 'semifinal2' | 'final'>('league');
-  const [opponentSearchQuery, setOpponentSearchQuery] = useState('');
+    if (teamB && teamB.players) {
+      const selected = teamB.players.slice(0, playersPerSide).map((p) => p.id);
+      setPlayingSquadB(selected);
+      setCaptainB(teamB.players[0]?.id || '');
+      setViceCaptainB(teamB.players[1]?.id || '');
+      setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
+    }
+  }, [teamBId, isEditMode ? 0 : playersPerSide, editMatch?.id]);
 
   const selectedTour = tournaments.find((t) => t.id === selectedTournamentId);
 
@@ -190,65 +237,25 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleFormatChange = (format: 'T10' | 'T20' | 'Club' | '100' | 'One Day' | 'Test Match' | 'Custom') => {
+  const handleFormatChange = (format: FormatName) => {
     setSelectedFormat(format);
-    if (format === 'T10') {
-      setTotalOvers(10);
-      setOversInput('10');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
-      setMaxOversPerBowler(2); 
-      setMaxOversPerBowlerInput('2');
-    } else if (format === 'T20') {
-      setTotalOvers(20);
-      setOversInput('20');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
-      setMaxOversPerBowler(4); 
-      setMaxOversPerBowlerInput('4');
-    } else if (format === 'Club') {
-      setTotalOvers(15);
-      setOversInput('15');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
-      setMaxOversPerBowler(3); 
-      setMaxOversPerBowlerInput('3');
-    } else if (format === '100') {
-      setTotalOvers(16);
-      setOversInput('16');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
-      setMaxOversPerBowler(4); 
-      setMaxOversPerBowlerInput('4');
-    } else if (format === 'One Day') {
-      setTotalOvers(50);
-      setOversInput('50');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
-      setMaxOversPerBowler(10); 
-      setMaxOversPerBowlerInput('10');
-    } else if (format === 'Test Match') {
-      setTotalOvers(20);
-      setOversInput('20');
-      setPlayersPerSide(11);
-      setPlayersPerSideInput('11');
-      setTotalWickets(10);
-      setWicketsInput('10');
+    const preset = FORMAT_PRESETS[format];
+    if (!preset) return;
+    setTotalOvers(preset.overs);
+    setOversInput(String(preset.overs));
+    setPlayersPerSide(11);
+    setPlayersPerSideInput('11');
+    setTotalWickets(10);
+    setWicketsInput('10');
+    if (preset.bowler !== null) {
+      setNoBowlerLimit(false);
+      setMaxOversPerBowler(preset.bowler);
+      setMaxOversPerBowlerInput(String(preset.bowler));
     }
   };
 
   const handlePlayersPerSideChange = (val: number) => {
-    const clamped = Math.max(2, Math.min(25, val));
+    const clamped = Math.max(2, Math.min(MAX_PLAYERS, val));
     setPlayersPerSide(clamped);
     setPlayersPerSideInput(String(clamped));
     const suggestedWickets = Math.max(1, clamped - 1);
@@ -257,33 +264,65 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   };
 
   const handleOversChange = (val: number) => {
-    const clamped = Math.max(1, Math.min(100, val));
+    const clamped = Math.max(1, Math.min(MAX_OVERS, val));
     setTotalOvers(clamped);
     setOversInput(String(clamped));
   };
 
   const handleWicketsChange = (val: number) => {
-    const clamped = Math.max(1, Math.min(25, val));
+    const clamped = Math.max(1, Math.min(MAX_WICKETS, val));
     setTotalWickets(clamped);
     setWicketsInput(String(clamped));
   };
 
   const handleBowlerLimitChange = (val: number) => {
-    const clamped = Math.max(1, Math.min(50, val));
+    const clamped = Math.max(1, Math.min(NO_LIMIT_VALUE - 1, val));
     setMaxOversPerBowler(clamped);
     setMaxOversPerBowlerInput(String(clamped));
   };
 
-
   const effectiveSquadA = playingSquadA.length > 0 ? playingSquadA : teamA.players.map((p) => p.id);
   const effectiveSquadB = playingSquadB.length > 0 ? playingSquadB : teamB.players.map((p) => p.id);
+
+  // Scorer: type a player's Profile ID (e.g. ARCL-002) or exact name.
+  const resolveScorer = (): { ok: boolean; profileId?: string; name?: string } => {
+    const raw = scorerName.trim();
+    if (!raw) return { ok: true };
+    const q = raw.toLowerCase();
+    if (editMatch?.delegatedScorerProfileId && q === editMatch.delegatedScorerProfileId.toLowerCase()) {
+      return { ok: true, profileId: editMatch.delegatedScorerProfileId, name: editMatch.delegatedScorerName };
+    }
+    const pool = [...allGlobalPlayers, ...teamA.players, ...teamB.players];
+    const found = pool.find(
+      (p) =>
+        p.profileId?.toLowerCase() === q ||
+        p.id.toLowerCase() === q ||
+        p.name.toLowerCase() === q ||
+        (p.phoneNumber && p.phoneNumber.toLowerCase() === q)
+    );
+    if (!found) return { ok: false };
+    return { ok: true, profileId: found.profileId || found.id, name: found.name };
+  };
+
+  const buildInnings = (team: Team) => ({
+    teamId: team.id,
+    teamName: team.name,
+    totalRuns: 0,
+    totalWickets: 0,
+    oversCompleted: 0,
+    ballsInCurrentOver: 0,
+    balls: [],
+    battingStats: {},
+    bowlingStats: {},
+    fallOfWickets: [],
+    extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
+  });
 
   const constructMatchObject = (status: 'scheduled' | 'live'): Match => {
     const isTest = selectedFormat === 'Test Match';
     const tossDecided = status === 'live';
     const effectiveTossWinnerId = tossDecided ? (tossWinnerId || teamA.id) : undefined;
     const effectiveTossDecision = tossDecided ? tossDecision : undefined;
-
 
     const initialBattingTeam = !tossDecided
       ? teamA
@@ -303,12 +342,18 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const nonStriker = battingPlayingPlayers[1] || battingPlayingPlayers[0] || initialBattingTeam.players[1] || { id: 'p2', name: 'Non-Striker' };
     const bowler = bowlingPlayingPlayers[0] || initialBowlingTeam.players[0] || { id: 'b1', name: 'Bowler' };
 
+    const base = isFixtureEdit && editMatch ? editMatch : null;
+    const scorer = resolveScorer();
+
     return {
-      id: isEditMode && editMatch ? editMatch.id : `match-${Date.now()}`,
-      name: matchName || `${teamA.name} vs ${teamB.name}`,
-      creatorId: isEditMode && editMatch ? editMatch.creatorId : loggedInPlayer?.id,
-      creatorProfileId: isEditMode && editMatch ? editMatch.creatorProfileId : loggedInPlayer?.profileId,
-      creatorName: isEditMode && editMatch ? editMatch.creatorName : loggedInPlayer?.name,
+      ...(base || {}),
+      id: base ? base.id : `match-${Date.now()}`,
+      name: matchName.trim() || `${teamA.name} vs ${teamB.name}`,
+      creatorId: base ? base.creatorId : loggedInPlayer?.id,
+      creatorProfileId: base ? base.creatorProfileId : loggedInPlayer?.profileId,
+      creatorName: base ? base.creatorName : loggedInPlayer?.name,
+      delegatedScorerProfileId: scorer.profileId,
+      delegatedScorerName: scorer.name,
       tournamentId: selectedTournamentId || undefined,
       tournamentName: selectedTour?.name || undefined,
       matchStage: selectedTournamentId ? matchStage : undefined,
@@ -323,30 +368,31 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       viceCaptainB: viceCaptainB || teamB.players[1]?.id,
       keeperA: keeperA || teamA.players[3]?.id || teamA.players[0]?.id,
       keeperB: keeperB || teamB.players[3]?.id || teamB.players[0]?.id,
-      tossWinnerTeamId: isEditMode && editMatch ? editMatch.tossWinnerTeamId : effectiveTossWinnerId,
-      tossDecision: isEditMode && editMatch ? editMatch.tossDecision : effectiveTossDecision,
-      status: isEditMode && editMatch ? editMatch.status : (status === 'scheduled' ? 'setup' : 'live'),
-      currentInningsNumber: isEditMode && editMatch ? editMatch.currentInningsNumber : 1,
+      tossWinnerTeamId: effectiveTossWinnerId,
+      tossDecision: effectiveTossDecision,
+      status: status === 'scheduled' ? 'setup' : 'live',
+      currentInningsNumber: 1,
       totalOvers,
-      isFreeHit: isEditMode && editMatch ? editMatch.isFreeHit : false,
+      isFreeHit: false,
       venue,
       date: matchTime ? `${matchDate} ${matchTime}` : matchDate,
-      createdAt: isEditMode && editMatch ? editMatch.createdAt : Date.now(),
+      createdAt: base ? base.createdAt : Date.now(),
       updatedAt: Date.now(),
       settings: {
+        ...(base ? base.settings : {}),
         maxOvers: totalOvers,
         ballsPerOver: 6,
-        maxOversPerBowler: maxOversPerBowler, // <--- Use manual limit state
+        maxOversPerBowler: noBowlerLimit ? NO_LIMIT_VALUE : maxOversPerBowler,
         playersPerSide,
         maxWickets: totalWickets,
         allowDirectRoofOut,
         allowSingleWallCatch,
-        freeHitOnNoBall: true,
-        wideRuns: 1,
-        noBallRuns: 1,
-        lastManBattingAllowed: false,
-        pitchType: 'Concrete Terrace',
-        ballType: 'Tennis Heavy (Cosco)',
+        freeHitOnNoBall: base?.settings?.freeHitOnNoBall ?? true,
+        wideRuns: base?.settings?.wideRuns ?? 1,
+        noBallRuns: base?.settings?.noBallRuns ?? 1,
+        lastManBattingAllowed: base?.settings?.lastManBattingAllowed ?? false,
+        pitchType: base?.settings?.pitchType ?? 'Concrete Terrace',
+        ballType: base?.settings?.ballType ?? 'Tennis Heavy (Cosco)',
         venue,
         date: matchDate,
         matchType: isTest
@@ -359,63 +405,18 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         matchFormat: isTest ? 'test' : 'limited_overs',
         oversPerInningsInTest: isTest ? totalOvers : undefined,
       },
-      currentStrikerId: isEditMode && editMatch ? editMatch.currentStrikerId : striker.id,
-      currentNonStrikerId: isEditMode && editMatch ? editMatch.currentNonStrikerId : nonStriker.id,
-      currentBowlerId: isEditMode && editMatch ? editMatch.currentBowlerId : bowler.id,
-      innings1: isEditMode && editMatch ? editMatch.innings1 : {
-        teamId: initialBattingTeam.id,
-        teamName: initialBattingTeam.name,
-        totalRuns: 0,
-        totalWickets: 0,
-        oversCompleted: 0,
-        ballsInCurrentOver: 0,
-        balls: [],
-        battingStats: {},
-        bowlingStats: {},
-        fallOfWickets: [],
-        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      },
-      innings2: isEditMode && editMatch ? editMatch.innings2 : {
-        teamId: initialBowlingTeam.id,
-        teamName: initialBowlingTeam.name,
-        totalRuns: 0,
-        totalWickets: 0,
-        oversCompleted: 0,
-        ballsInCurrentOver: 0,
-        balls: [],
-        battingStats: {},
-        bowlingStats: {},
-        fallOfWickets: [],
-        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      },
-      innings3: isEditMode && editMatch ? editMatch.innings3 : (isTest ? {
-        teamId: initialBattingTeam.id,
-        teamName: initialBattingTeam.name,
-        totalRuns: 0,
-        totalWickets: 0,
-        oversCompleted: 0,
-        ballsInCurrentOver: 0,
-        balls: [],
-        battingStats: {},
-        bowlingStats: {},
-        fallOfWickets: [],
-        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      } : undefined),
-      innings4: isEditMode && editMatch ? editMatch.innings4 : (isTest ? {
-        teamId: initialBowlingTeam.id,
-        teamName: initialBowlingTeam.name,
-        totalRuns: 0,
-        totalWickets: 0,
-        oversCompleted: 0,
-        ballsInCurrentOver: 0,
-        balls: [],
-        battingStats: {},
-        bowlingStats: {},
-        fallOfWickets: [],
-        extras: { wides: 0, noBalls: 0, byes: 0, legByes: 0, penalty: 0, total: 0 },
-      } : undefined),
+      currentStrikerId: striker.id,
+      currentNonStrikerId: nonStriker.id,
+      currentBowlerId: bowler.id,
+      innings1: buildInnings(initialBattingTeam),
+      innings2: buildInnings(initialBowlingTeam),
+      innings3: isTest ? buildInnings(initialBattingTeam) : undefined,
+      innings4: isTest ? buildInnings(initialBowlingTeam) : undefined,
     };
   };
+
+  const scorerNotFoundMessage =
+    "Scorer not found. Enter the player's Profile ID (e.g. ARCL-002) or exact name, or leave it empty.";
 
   const handleAction = () => {
     cricketAudio.playClick();
@@ -423,6 +424,22 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       alert('Please login first to create and schedule a match.');
       return;
     }
+
+    // Started / completed match: only name, venue, date and time change.
+    if (isDetailsOnlyEdit && editMatch && onUpdateMatchDetails) {
+      onUpdateMatchDetails({
+        ...editMatch,
+        name: matchName.trim() || editMatch.name,
+        venue,
+        date: matchTime ? `${matchDate} ${matchTime}` : matchDate,
+        matchStage: editMatch.tournamentId ? matchStage : editMatch.matchStage,
+        settings: { ...editMatch.settings, venue, date: matchDate },
+        updatedAt: Date.now(),
+      });
+      onClose();
+      return;
+    }
+
     if (!teamAId || !teamBId) {
       alert('Please select both Team A and Team B first (or search for a team by its Team ID).');
       return;
@@ -431,10 +448,14 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       alert('Please select two different teams.');
       return;
     }
+    if (!resolveScorer().ok) {
+      alert(scorerNotFoundMessage);
+      return;
+    }
 
     const matchObj = constructMatchObject('scheduled');
 
-    if (isEditMode && onUpdateMatchDetails) {
+    if (isFixtureEdit && onUpdateMatchDetails) {
       onUpdateMatchDetails(matchObj);
       onClose();
     } else {
@@ -442,7 +463,6 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       onClose();
     }
   };
-
 
   const handleOpenToss = () => {
     cricketAudio.playClick();
@@ -456,6 +476,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     }
     if (!teamA || !teamB || teamA.id === teamB.id) {
       alert('Please select two different teams.');
+      return;
+    }
+    if (!resolveScorer().ok) {
+      alert(scorerNotFoundMessage);
       return;
     }
     setTossWinnerId(teamA.id);
@@ -484,17 +508,27 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          
+
           <h2 className="text-base font-black tracking-wide text-white uppercase text-center flex-1">
-             {isEditMode ? 'Edit Match Details' : (selectedTour ? selectedTour.name : 'GROUP A Match')}
+            {isDetailsOnlyEdit
+              ? 'Edit Match Details'
+              : isFixtureEdit
+              ? 'Open Match'
+              : selectedTour
+              ? selectedTour.name
+              : 'GROUP A Match'}
           </h2>
 
-          <button
-            onClick={() => setShowFormatModal(true)}
-            className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
-          >
-            <Settings className="w-5 h-5" />
-          </button>
+          {!isDetailsOnlyEdit ? (
+            <button
+              onClick={() => setShowFormatModal(true)}
+              className="p-1.5 rounded-xl hover:bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+          ) : (
+            <div className="w-8" />
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-5">
@@ -535,6 +569,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </p>
             </div>
           )}
+
           <div className="grid grid-cols-2 gap-4 text-center py-2">
             <div className="flex flex-col items-center">
               <span className="text-[11px] text-slate-400 mb-1.5 font-medium">Select Team</span>
@@ -548,7 +583,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               <select
                 value={teamAId}
                 onChange={(e) => setTeamAId(e.target.value)}
-                disabled={isEditMode}
+                disabled={isDetailsOnlyEdit}
                 className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
@@ -556,14 +591,16 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              <button
-                type="button"
-                disabled={!teamAId}
-                onClick={() => setSquadModalTeam('A')}
-                className="text-[11px] text-amber-400 hover:text-amber-300 font-bold mt-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span>Squad ({effectiveSquadA.length} Playing)</span>
-              </button>
+              {!isDetailsOnlyEdit && (
+                <button
+                  type="button"
+                  disabled={!teamAId}
+                  onClick={() => setSquadModalTeam('A')}
+                  className="text-[11px] text-amber-400 hover:text-amber-300 font-bold mt-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span>Squad ({effectiveSquadA.length} Playing)</span>
+                </button>
+              )}
             </div>
 
             <div className="flex flex-col items-center">
@@ -578,7 +615,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               <select
                 value={teamBId}
                 onChange={(e) => setTeamBId(e.target.value)}
-                disabled={isEditMode}
+                disabled={isDetailsOnlyEdit}
                 className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
@@ -586,79 +623,83 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
-              <button
-                type="button"
-                disabled={!teamBId}
-                onClick={() => setSquadModalTeam('B')}
-                className="text-[11px] text-amber-400 hover:text-amber-300 font-bold mt-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <span>Squad ({effectiveSquadB.length} Playing)</span>
-              </button>
+              {!isDetailsOnlyEdit && (
+                <button
+                  type="button"
+                  disabled={!teamBId}
+                  onClick={() => setSquadModalTeam('B')}
+                  className="text-[11px] text-amber-400 hover:text-amber-300 font-bold mt-1.5 px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 cursor-pointer flex items-center gap-1 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <span>Squad ({effectiveSquadB.length} Playing)</span>
+                </button>
+              )}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3.5 space-y-2">
-            <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
-              🔍 Looking for another team? Search by Team ID
-            </span>
-            <input
-              type="text"
-              value={opponentSearchQuery}
-              onChange={(e) => setOpponentSearchQuery(e.target.value)}
-              placeholder="e.g. TEAM-014 or team name"
-              className="w-full text-xs font-bold text-white bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-emerald-500"
-            />
-            {opponentSearchQuery.trim().length >= 2 && (
-              opponentSearchResults.length > 0 ? (
-                <div className="space-y-1.5">
-                  {opponentSearchResults.map((t) => (
-                    <div
-                      key={t.id}
-                      className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800"
-                    >
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm">{t.logoIcon || '🛡️'}</span>
-                        <span className="text-xs font-bold text-white">{t.name}</span>
-                        {t.teamId && (
-                          <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400">
-                            {t.teamId}
-                          </span>
-                        )}
+          {!isDetailsOnlyEdit && (
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-3.5 space-y-2">
+              <span className="text-[11px] font-black uppercase tracking-wider text-slate-400">
+                🔍 Looking for another team? Search by Team ID
+              </span>
+              <input
+                type="text"
+                value={opponentSearchQuery}
+                onChange={(e) => setOpponentSearchQuery(e.target.value)}
+                placeholder="e.g. TEAM-014 or team name"
+                className="w-full text-xs font-bold text-white bg-slate-900 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none focus:border-emerald-500"
+              />
+              {opponentSearchQuery.trim().length >= 2 && (
+                opponentSearchResults.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {opponentSearchResults.map((t) => (
+                      <div
+                        key={t.id}
+                        className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm">{t.logoIcon || '🛡️'}</span>
+                          <span className="text-xs font-bold text-white">{t.name}</span>
+                          {t.teamId && (
+                            <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-emerald-400">
+                              {t.teamId}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamAId(t.id);
+                              setOpponentSearchQuery('');
+                            }}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white"
+                          >
+                            Set as Team A
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTeamBId(t.id);
+                              setOpponentSearchQuery('');
+                            }}
+                            className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white"
+                          >
+                            Set as Team B
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTeamAId(t.id);
-                            setOpponentSearchQuery('');
-                          }}
-                          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white"
-                        >
-                          Set as Team A
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTeamBId(t.id);
-                            setOpponentSearchQuery('');
-                          }}
-                          className="text-[10px] font-bold px-2 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 text-white"
-                        >
-                          Set as Team B
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-[11px] text-slate-500">
-                  No team found with that ID/name. Not created yet? Use "Create New Team" below.
-                </p>
-              )
-            )}
-          </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500">
+                    No team found with that ID/name. Not created yet? Use "Create New Team" below.
+                  </p>
+                )
+              )}
+            </div>
+          )}
 
-                    {/* 1. MATCH TITLE (Clean Design) */}
+          {/* 1. MATCH TITLE */}
           <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 shadow-inner focus-within:border-emerald-500 focus-within:bg-slate-900 transition-all relative overflow-hidden">
             <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500/50"></div>
             <label className="text-[10px] font-black uppercase tracking-wider text-emerald-500/80 block text-center mb-0.5">
@@ -673,7 +714,21 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             />
           </div>
 
-          {/* 2. DATE & TIME (Clean Design) */}
+          {/* 1b. VENUE */}
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 focus-within:border-emerald-500 transition-all">
+            <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center justify-center gap-1 mb-0.5">
+              <MapPin className="w-3 h-3" /> Venue
+            </label>
+            <input
+              type="text"
+              value={venue}
+              onChange={(e) => setVenue(e.target.value)}
+              placeholder="e.g. Rooftop Arena, Amritsar"
+              className="w-full bg-transparent text-center text-xs font-bold text-white placeholder-slate-600 focus:outline-none"
+            />
+          </div>
+
+          {/* 2. DATE & TIME */}
           <div className="grid grid-cols-2 gap-3">
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2 focus-within:border-emerald-500 transition-all flex flex-col items-center">
               <label className="text-[9px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
@@ -699,46 +754,51 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             </div>
           </div>
 
-          {/* 3. FORMAT SUMMARY BOX */}
-          <div
-            onClick={() => setShowFormatModal(true)}
-            className="py-3 px-4 rounded-2xl bg-slate-900 border border-slate-700 text-center cursor-pointer hover:border-emerald-500 hover:bg-slate-800 transition-all shadow-md flex flex-col items-center justify-center gap-1"
-          >
-            <p className="text-sm font-black text-white flex items-center justify-center gap-2">
-              <Zap className="w-4 h-4 text-amber-400" />
-              {selectedFormat} • {playersPerSide} Players • {totalWickets} Wkts ({totalOvers} Ov)
-            </p>
-            <span className="text-[10px] text-emerald-400/80 font-bold">Tap to change format settings</span>
-          </div>
+          {!isDetailsOnlyEdit && (
+            <>
+              {/* 3. FORMAT SUMMARY BOX */}
+              <div
+                onClick={() => setShowFormatModal(true)}
+                className="py-3 px-4 rounded-2xl bg-slate-900 border border-slate-700 text-center cursor-pointer hover:border-emerald-500 hover:bg-slate-800 transition-all shadow-md flex flex-col items-center justify-center gap-1"
+              >
+                <p className="text-sm font-black text-white flex items-center justify-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  {selectedFormat} • {playersPerSide} Players • {totalWickets} Wkts ({totalOvers} Ov)
+                </p>
+                <span className="text-[10px] text-emerald-400/80 font-bold">Tap to change format settings</span>
+              </div>
 
-          {/* 4. SCORER NAME INPUT */}
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 focus-within:border-emerald-500 transition-all">
-             <input
-              type="text"
-              value={scorerName}
-              onChange={(e) => setScorerName(e.target.value)}
-              placeholder="Scorer Name (Optional)"
-              className="w-full bg-transparent text-center text-xs font-bold text-white placeholder-slate-600 focus:outline-none"
-            />
-          </div>
-
+              {/* 4. SCORER */}
+              <div className="bg-slate-950 border border-slate-800 rounded-2xl p-2.5 focus-within:border-emerald-500 transition-all">
+                <input
+                  type="text"
+                  value={scorerName}
+                  onChange={(e) => setScorerName(e.target.value)}
+                  placeholder="Scorer Profile ID / Name (Optional)"
+                  className="w-full bg-transparent text-center text-xs font-bold text-white placeholder-slate-600 focus:outline-none"
+                />
+              </div>
+            </>
+          )}
 
           <div className="grid grid-cols-2 gap-3 pt-3">
             <button
               type="button"
               onClick={handleAction}
-              className="py-3 rounded-2xl bg-teal-900/80 hover:bg-teal-800 text-teal-200 text-xs font-black tracking-wider uppercase transition cursor-pointer border border-teal-500/30"
+              className={`py-3 rounded-2xl bg-teal-900/80 hover:bg-teal-800 text-teal-200 text-xs font-black tracking-wider uppercase transition cursor-pointer border border-teal-500/30 ${
+                isDetailsOnlyEdit ? 'col-span-2' : ''
+              }`}
             >
-               {isEditMode ? 'UPDATE DETAILS' : 'SAVE FIXTURE'}
+              {isDetailsOnlyEdit ? 'UPDATE DETAILS' : isFixtureEdit ? 'SAVE' : 'SAVE FIXTURE'}
             </button>
-            {!isEditMode && (
-                <button
+            {!isDetailsOnlyEdit && (
+              <button
                 type="button"
                 onClick={handleOpenToss}
                 className="py-3 rounded-2xl bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-black tracking-wider uppercase shadow-lg shadow-emerald-700/30 transition cursor-pointer"
-                >
+              >
                 START MATCH
-                </button>
+              </button>
             )}
           </div>
         </div>
@@ -777,7 +837,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       setOversInput(val);
                       if (val !== '' && !isNaN(Number(val))) {
                         const num = Number(val);
-                        if (num >= 1 && num <= 100) {
+                        if (num >= 1 && num <= MAX_OVERS) {
                           setTotalOvers(num);
                         }
                       }
@@ -860,7 +920,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       setPlayersPerSideInput(val);
                       if (val !== '' && !isNaN(Number(val))) {
                         const num = Number(val);
-                        if (num >= 2 && num <= 25) {
+                        if (num >= 2 && num <= MAX_PLAYERS) {
                           setPlayersPerSide(num);
                           const autoWickets = Math.max(1, num - 1);
                           setTotalWickets(autoWickets);
@@ -926,7 +986,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                       setWicketsInput(val);
                       if (val !== '' && !isNaN(Number(val))) {
                         const num = Number(val);
-                        if (num >= 1 && num <= 25) {
+                        if (num >= 1 && num <= MAX_WICKETS) {
                           setTotalWickets(num);
                         }
                       }
@@ -952,54 +1012,68 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </div>
             </div>
 
-            {/* MANUAL BOWLER LIMIT BOX */}
+            {/* MAX OVERS PER BOWLER — fully manual, or no limit */}
             {selectedFormat !== 'Test Match' && (
               <div className="space-y-1.5 mt-2 pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between bg-emerald-950/20 p-2 rounded-xl border border-emerald-900/30">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-emerald-950/20 p-2 rounded-xl border border-emerald-900/30">
                   <label className="text-xs font-black text-emerald-400 block">Max Overs Per Bowler</label>
                   <div className="flex items-center gap-1.5">
+                    {!noBowlerLimit && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => handleBowlerLimitChange(maxOversPerBowler - 1)}
+                          className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
+                        >
+                          -
+                        </button>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          value={maxOversPerBowlerInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setMaxOversPerBowlerInput(val);
+                            if (val !== '' && !isNaN(Number(val))) {
+                              const num = Number(val);
+                              if (num >= 1 && num <= NO_LIMIT_VALUE - 1) {
+                                setMaxOversPerBowler(num);
+                              }
+                            }
+                          }}
+                          onBlur={() => {
+                            if (maxOversPerBowlerInput === '' || isNaN(Number(maxOversPerBowlerInput)) || Number(maxOversPerBowlerInput) < 1) {
+                              setMaxOversPerBowlerInput(String(maxOversPerBowler || 2));
+                            } else {
+                              handleBowlerLimitChange(Number(maxOversPerBowlerInput));
+                            }
+                          }}
+                          className="w-14 py-1 px-1 text-center bg-slate-950 border border-emerald-500 rounded-lg text-sm font-mono font-black text-emerald-400 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleBowlerLimitChange(maxOversPerBowler + 1)}
+                          className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
+                        >
+                          +
+                        </button>
+                      </>
+                    )}
                     <button
                       type="button"
-                      onClick={() => handleBowlerLimitChange(maxOversPerBowler - 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
+                      onClick={() => setNoBowlerLimit((v) => !v)}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-black cursor-pointer border ${
+                        noBowlerLimit
+                          ? 'bg-emerald-600 text-white border-emerald-400'
+                          : 'bg-slate-900 text-slate-400 border-slate-700'
+                      }`}
                     >
-                      -
-                    </button>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      value={maxOversPerBowlerInput}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setMaxOversPerBowlerInput(val);
-                        if (val !== '' && !isNaN(Number(val))) {
-                          const num = Number(val);
-                          if (num >= 1 && num <= 50) {
-                            setMaxOversPerBowler(num);
-                          }
-                        }
-                      }}
-                      onBlur={() => {
-                        if (maxOversPerBowlerInput === '' || isNaN(Number(maxOversPerBowlerInput)) || Number(maxOversPerBowlerInput) < 1) {
-                          setMaxOversPerBowlerInput(String(maxOversPerBowler || 2));
-                        } else {
-                          handleBowlerLimitChange(Number(maxOversPerBowlerInput));
-                        }
-                      }}
-                      className="w-14 py-1 px-1 text-center bg-slate-950 border border-emerald-500 rounded-lg text-sm font-mono font-black text-emerald-400 focus:outline-none"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleBowlerLimitChange(maxOversPerBowler + 1)}
-                      className="w-7 h-7 rounded-lg bg-slate-800 hover:bg-emerald-700 text-white font-black text-sm flex items-center justify-center cursor-pointer"
-                    >
-                      +
+                      {noBowlerLimit ? '✓ No limit' : 'No limit'}
                     </button>
                   </div>
                 </div>
               </div>
             )}
-
 
             <button
               type="button"
