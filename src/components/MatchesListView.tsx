@@ -67,7 +67,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [openActionsForMatchId, setOpenActionsForMatchId] = useState<string | null>(null);
-  // Which match's "Share Squad / Poster" modal is currently open (null = closed)
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
 
   const isUserAdmin = Boolean(
@@ -309,10 +308,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
             const scoreA = buildScoreLine(m, m.teamA.id);
             const scoreB = buildScoreLine(m, m.teamB.id);
             const actionsOpen = openActionsForMatchId === m.id;
-            // Two separate labels, always shown together: the match's own
-            // number/name (e.g. "Match 16") never disappears, and the
-            // league/tournament name shows alongside it whenever the match
-            // belongs to one — neither one replaces the other.
             const matchNumberLabel = m.name || '';
             const leagueTitle = m.tournamentName || `${m.teamA.name} vs ${m.teamB.name}`;
 
@@ -337,7 +332,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     : 'bg-slate-900/60 border-slate-800/80'
                 }`}
               >
-                {/* Header: status pill + full match/league name + share + settings */}
                 <div className="px-3.5 pt-3 pb-2 flex items-start justify-between gap-2">
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -389,7 +383,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       {actionsOpen && (
                         <>
                           <div className="fixed inset-0 z-30" onClick={() => setOpenActionsForMatchId(null)} />
-                          <div className="absolute right-0 top-full mt-1.5 w-48 rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-40 overflow-hidden py-1">
+                          <div className="absolute right-0 top-full mt-1.5 w-48 max-h-[60vh] overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-40 py-1">
                             <button
                               onClick={() => {
                                 setOpenActionsForMatchId(null);
@@ -457,7 +451,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Compact score rows — click anywhere to open the match */}
                 <div
                   onClick={() => {
                     if (!actionsOpen) {
@@ -519,7 +512,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     );
                   })()}
 
-                  {/* Venue • full date/time • live situation / result */}
                   <div className="flex items-center justify-between gap-2 text-[10px] text-slate-400 pt-1.5 mt-1 border-t border-slate-800/60">
                     <span className="flex items-center gap-1 min-w-0 truncate">
                       <MapPin className="w-3 h-3 text-emerald-500 shrink-0" />
@@ -540,7 +532,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                   </div>
                 </div>
 
-                {/* Footer: creator + primary action */}
                 <div className="px-3.5 py-2 bg-slate-950/80 border-t border-slate-800 flex items-center justify-between gap-2">
                   <span className="text-[10px] text-slate-500 font-mono truncate font-medium">
                     {m.delegatedScorerProfileId ? (
@@ -575,7 +566,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
         )}
       </div>
 
-      {/* Older Matches Pagination Button */}
       {onLoadOlderMatches && filteredMatches.length > 0 && hasMoreOlderMatches && (
         <div className="flex justify-center py-4">
           <button
@@ -588,7 +578,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {matchToDelete && (
         <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 p-5 space-y-4 shadow-2xl">
@@ -633,11 +622,6 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
         </div>
       )}
 
-      {/* Share Squad / Match Card Modal — reuses the same ShareMatchCard
-          component used inside live scoring. ShareMatchCard already
-          detects match.status !== 'live' && !== 'completed' internally
-          and renders the squad-lineup poster instead of a score poster,
-          so no extra logic is needed here — just open it with the picked match. */}
       {shareMatch && (
         <ShareMatchCard
           isOpen={true}
