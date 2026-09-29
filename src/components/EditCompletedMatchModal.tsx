@@ -17,7 +17,8 @@ const WICKET_TYPE_OPTIONS: { value: WicketType; label: string; needsFielder: boo
   { value: 'runout', label: 'Run Out', needsFielder: true },
   { value: 'stumped', label: 'Stumped', needsFielder: true },
   { value: 'hitwicket', label: 'Hit Wicket', needsFielder: false },
-  { value: 'direct_roof_out', label: 'Direct Roof Out', needsFielder: true },
+  // Direct Roof Out is credited to the bowler (same as the live scorer), no fielder needed.
+  { value: 'direct_roof_out', label: 'Direct Roof Out', needsFielder: false },
   { value: 'wall_catch', label: 'Wall Catch', needsFielder: true },
   { value: 'retired_hurt', label: 'Retired Hurt', needsFielder: false },
   { value: 'retired', label: 'Retired', needsFielder: false },
@@ -30,19 +31,20 @@ const needsFielderFor = (wt: WicketType | ''): boolean =>
 // A bowler is credited (and so needs to be picked) for these dismissal types.
 // Run outs, retirements and timed-out are not credited to a bowler.
 const needsBowlerFor = (wt: WicketType | ''): boolean =>
-  ['caught', 'bowled', 'lbw', 'stumped', 'hitwicket', 'wall_catch'].includes(wt as string);
+  ['caught', 'bowled', 'lbw', 'stumped', 'hitwicket', 'wall_catch', 'direct_roof_out'].includes(wt as string);
 
 // Dismissal types that earn the fielder an MVP fielding point (see utils/mvp.ts).
 // A manually-added dismissal of these types needs a synthetic ball entry so the
 // fielder actually gets credited — MVP points are recalculated from balls only.
 const FIELDING_CREDIT_TYPES: WicketType[] = ['caught', 'wall_catch', 'stumped', 'runout'];
 
+// Same wording as the live scorer so the scorecard looks identical after an edit.
 const buildDismissalText = (wicketType: WicketType, fielderName: string, bowlerName: string): string => {
   switch (wicketType) {
     case 'caught':
       return `c ${fielderName || 'Fielder'} b ${bowlerName || 'Bowler'}`;
     case 'wall_catch':
-      return `c ${fielderName || 'Fielder'} (wall catch) b ${bowlerName || 'Bowler'}`;
+      return `c ${fielderName || 'Fielder'} b ${bowlerName || 'Bowler'} (Wall Catch)`;
     case 'bowled':
       return `b ${bowlerName || 'Bowler'}`;
     case 'lbw':
@@ -54,7 +56,7 @@ const buildDismissalText = (wicketType: WicketType, fielderName: string, bowlerN
     case 'hitwicket':
       return `hit wicket b ${bowlerName || 'Bowler'}`;
     case 'direct_roof_out':
-      return `out (direct roof — ${fielderName || 'Fielder'})`;
+      return `Direct Roof Out (ਛੱਤ ਤੋਂ ਬਾਹਰ) b ${bowlerName || 'Bowler'}`;
     case 'retired_hurt':
       return 'retired hurt';
     case 'retired':
@@ -73,6 +75,8 @@ interface DismissalEdit {
   bowlerId?: string;
   bowlerName?: string;
   hasBallRecord: boolean;
+  // id of the exact delivery this dismissal belongs to (so only that ball is edited)
+  ballId?: string;
 }
 
 export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = ({
@@ -94,7 +98,7 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
   // New-batsman-to-add dropdown selection (per current innings tab)
   const [newBatsmanId, setNewBatsmanId] = useState('');
 
-  // Fix: Yeh useEffect har baar jab modal khulega, tab data ko fresh reset karega (Stale data issue fixed)
+  // Every time the modal opens, data is reset fresh (stale data issue fixed)
   useEffect(() => {
     if (isOpen && match) {
       setActiveInningsIdx(0);
@@ -112,9 +116,14 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
         Object.values(inn.battingStats).forEach((s) => {
           bMap[idx][s.playerId] = { ...s };
 
-          const wicketBall = (inn.balls || []).find(
-            (b) => b.isWicket && b.dismissedPlayerId === s.playerId
-          );
+          const belongsToPlayer = (b: BallOutcome) =>
+            b.isWicket && (b.dismissedPlayerId === s.playerId || (!b.dismissedPlayerId && b.strikerId === s.playerId));
+
+          // Prefer the real dismissal over an earlier "retired hurt" ball for the same player.
+          const playerWicketBalls = (inn.balls || []).filter(belongsToPlayer);
+          const wicketBall =
+            playerWicketBalls.find((b) => b.wicketType !== 'retired_hurt') || playerWicketBalls[0];
+
           if (wicketBall) {
             dMap[idx][s.playerId] = {
               wicketType: wicketBall.wicketType || 'bowled',
@@ -123,6 +132,7 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
               bowlerId: '',
               bowlerName: wicketBall.bowlerName || '',
               hasBallRecord: true,
+              ballId: wicketBall.id,
             };
           } else {
             dMap[idx][s.playerId] = {
@@ -180,6 +190,17 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
   const availableToAdd = (battingPlayersByInnings[activeInningsIdx] || []).filter(
     (p) => !alreadyBattingIds.has(p.id)
   );
+
+  // Fielder is compulsory for caught / wall catch / stumped / run out (needed for MVP credit).
+  const missingFielderFor: string[] = [];
+  inningsList.forEach((_, idx) => {
+    Object.values(battingEdits[idx] || {}).forEach((s) => {
+      const d = dismissalEdits[idx]?.[s.playerId];
+      if (s.isOut && d && FIELDING_CREDIT_TYPES.includes(d.wicketType as WicketType) && !d.fielderId) {
+        missingFielderFor.push(s.playerName);
+      }
+    });
+  });
 
   const updateBatting = (playerId: string, patch: Partial<BatsmanStats>) => {
     setBattingEdits((prev) => {
@@ -265,6 +286,7 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
   };
 
   const handleSave = () => {
+    if (missingFielderFor.length > 0) return;
     cricketAudio.playClick();
 
     const updatedInningsList = inningsList.map((inn, idx) => {
@@ -283,21 +305,28 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
 
       const innDismissals = dismissalEdits[idx] || {};
 
-      // Existing deliveries: apply any wicket-type / fielder corrections made to them.
-      const finalBalls: BallOutcome[] = (inn.balls || []).map((b) => {
-        if (!b.isWicket || !b.dismissedPlayerId) return b;
-        const edit = innDismissals[b.dismissedPlayerId];
-        if (!edit || !edit.hasBallRecord || !edit.wicketType) return b;
+      // Edits keyed by the exact delivery they belong to, so only that ball is changed
+      // (old fielder is fully replaced by the new one — no duplicate credit).
+      const editByBallId: { [ballId: string]: DismissalEdit } = {};
+      Object.values(innDismissals).forEach((e) => {
+        if (e.hasBallRecord && e.ballId && e.wicketType) editByBallId[e.ballId] = e;
+      });
 
+      const finalBalls: BallOutcome[] = (inn.balls || []).map((b) => {
+        const edit = editByBallId[b.id];
+        if (!edit || !edit.wicketType) return b;
+
+        const pid = b.dismissedPlayerId || b.strikerId;
         const needsFielder = needsFielderFor(edit.wicketType);
         const updatedBall: BallOutcome = {
           ...b,
+          dismissedPlayerId: pid,
           wicketType: edit.wicketType,
           fielderId: needsFielder ? edit.fielderId : undefined,
           fielderName: needsFielder ? edit.fielderName : undefined,
         };
 
-        const batter = finalBatting[b.dismissedPlayerId];
+        const batter = finalBatting[pid];
         if (batter) {
           batter.dismissalText = buildDismissalText(edit.wicketType, edit.fielderName, b.bowlerName);
         }
@@ -534,7 +563,9 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
                                 const player = activeFieldingPlayers.find((p) => p.id === pid);
                                 updateDismissal(s.playerId, { fielderId: pid, fielderName: player?.name || '' });
                               }}
-                              className="text-[11px] font-bold bg-slate-900 text-white px-2 py-1 rounded-lg border border-slate-700 max-w-[150px]"
+                              className={`text-[11px] font-bold bg-slate-900 text-white px-2 py-1 rounded-lg border max-w-[150px] ${
+                                dismissal?.fielderId ? 'border-slate-700' : 'border-rose-500'
+                              }`}
                             >
                               <option value="">Select fielder</option>
                               {activeFieldingPlayers.map((p) => (
@@ -682,7 +713,12 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
           </div>
         </div>
 
-        <div className="p-4 border-t border-slate-800 flex justify-end gap-2">
+        <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2 flex-wrap">
+          {missingFielderFor.length > 0 && (
+            <span className="text-[10px] font-bold text-rose-400 mr-auto">
+              Fielder select karo: {missingFielderFor.join(', ')}
+            </span>
+          )}
           <button
             onClick={onClose}
             className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold"
@@ -691,7 +727,8 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center gap-1.5"
+            disabled={missingFielderFor.length > 0}
+            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Save className="w-3.5 h-3.5" />
             Save Corrections
