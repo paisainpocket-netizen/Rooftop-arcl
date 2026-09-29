@@ -1341,7 +1341,9 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   const handleConfirmWicket = () => {
     const isDismissedStriker = dismissedRole === 'striker';
     const dismissedPlayer = isDismissedStriker ? striker : nonStriker;
-    const fielder = bowlingSquad.find((p) => p.id === fielderId);
+    const needsFielder = ['caught', 'wall_catch', 'runout', 'stumped'].includes(wicketType);
+    if (needsFielder && !fielderId) return; // fielder is compulsory for these dismissals
+    const fielder = needsFielder ? bowlingSquad.find((p) => p.id === fielderId) : undefined;
 
     handleScoreBall(0, 'none', 0, true, {
       wicketType,
@@ -1358,7 +1360,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   function formatDismissalText(type: WicketType, bName: string, fName?: string): string {
     switch (type) {
       case 'direct_roof_out':
-        return 'Direct Roof Out (ਛੱਤ ਤੋਂ ਬਾਹਰ)';
+        return `Direct Roof Out (ਛੱਤ ਤੋਂ ਬਾਹਰ) b ${bName}`;
       case 'wall_catch':
         return `c ${fName || 'Fielder'} b ${bName} (Wall Catch)`;
       case 'bowled':
@@ -3537,6 +3539,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                     </option>
                   ))}
                 </select>
+                {!fielderId && (
+                  <p className="text-[10px] font-bold text-rose-400 mt-1">
+                    Fielder select karna zaroori hai
+                  </p>
+                )}
               </div>
             )}
 
@@ -3551,7 +3558,8 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
               <button
                 type="button"
                 onClick={handleConfirmWicket}
-                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-600/30 cursor-pointer"
+                disabled={['caught', 'wall_catch', 'runout', 'stumped'].includes(wicketType) && !fielderId}
+                className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-600/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirm Wicket
               </button>
