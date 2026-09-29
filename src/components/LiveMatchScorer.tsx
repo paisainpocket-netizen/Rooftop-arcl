@@ -18,7 +18,7 @@ import {
   getHatTrickText,
   getMaidenOverText,
 } from '../utils/commentary';
-import { calculateMatchMVP, getRecommendedMOM } from '../utils/mvp';
+import { calculateMatchMVP, getRecommendedMOM, type PlayerMVPScore } from '../utils/mvp';
 import { PointsSystemModal } from './PointsSystemModal';
 import { WagonWheelModal } from './WagonWheelModal';
 import { WagonWheelView } from './WagonWheelView';
@@ -142,6 +142,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   const [showMvpRulesModal, setShowMvpRulesModal] = useState(false);
   const [mvpFilterTab, setMvpFilterTab] = useState<'best_economy' | 'most_maidens' | 'bowl_dots' | 'mvp' | 'top_scorers' | 'most_wickets'>('mvp');
   const [selectedBallDetail, setSelectedBallDetail] = useState<BallOutcome | null>(null);
+  const [mvpDetailFor, setMvpDetailFor] = useState<PlayerMVPScore | null>(null);
 
   const [viewInningsNum, setViewInningsNum] = useState<number>(match.currentInningsNumber || 1);
 
@@ -2419,7 +2420,8 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                   return (
                     <div
                       key={p.playerId}
-                      className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-slate-700 transition space-y-2"
+                      onClick={() => setMvpDetailFor(p)}
+                      className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 hover:border-emerald-500/60 transition space-y-2 cursor-pointer active:scale-[0.98]"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
@@ -3718,6 +3720,81 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
       {/* MVP RULES MODAL */}
       <PointsSystemModal isOpen={showMvpRulesModal} onClose={() => setShowMvpRulesModal(false)} />
+
+      {/* MVP DETAIL POPUP — tap any player card to see their point-by-point breakdown */}
+      {mvpDetailFor && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center"
+          onClick={() => setMvpDetailFor(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full sm:max-w-md max-h-[80vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl bg-white text-slate-900 shadow-2xl animate-in slide-in-from-bottom sm:fade-in duration-200"
+          >
+            <div className="p-5 pb-3 flex items-start justify-between border-b border-slate-200">
+              <div>
+                <h3 className="text-xl font-black text-slate-900">{mvpDetailFor.playerName}</h3>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">
+                  {mvpDetailFor.teamName}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-3xl font-black text-emerald-600">{mvpDetailFor.totalPoints}</span>
+                <button
+                  onClick={() => setMvpDetailFor(null)}
+                  className="p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-5 pt-3 space-y-4">
+              {(mvpDetailFor.battingSummary && mvpDetailFor.battingSummary !== 'Did not bat') && (
+                <p className="text-xs font-bold text-amber-600">🏏 {mvpDetailFor.battingSummary}</p>
+              )}
+              {(mvpDetailFor.bowlingSummary && mvpDetailFor.bowlingSummary !== 'Did not bowl') && (
+                <p className="text-xs font-bold text-emerald-600">🎯 {mvpDetailFor.bowlingSummary}</p>
+              )}
+
+              {(mvpDetailFor.breakdown?.length ?? 0) === 0 ? (
+                <p className="text-sm text-slate-500 italic text-center py-6">
+                  No point-scoring actions recorded for this player yet.
+                </p>
+              ) : (
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-slate-500 text-xs uppercase font-bold">
+                      <tr>
+                        <th className="text-left px-4 py-2.5">Action</th>
+                        <th className="text-right px-4 py-2.5">Points</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(mvpDetailFor.breakdown || []).map((line, i) => (
+                        <tr key={`${line.label}-${i}`}>
+                          <td className="px-4 py-3 font-semibold text-slate-700">{line.label}</td>
+                          <td className="px-4 py-3 text-right font-mono font-black text-slate-900">
+                            {line.points}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-emerald-50 border-t-2 border-emerald-200">
+                        <td className="px-4 py-3 font-black text-emerald-700">Total</td>
+                        <td className="px-4 py-3 text-right font-mono font-black text-emerald-700">
+                          {mvpDetailFor.totalPoints}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* BALL DETAIL MODAL */}
       {selectedBallDetail && (
