@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Match, Team, Player } from '../types/cricket';
 import { 
   Plus, 
@@ -69,6 +70,29 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   const [deletedIds, setDeletedIds] = useState<Set<string>>(new Set());
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [openActionsForMatchId, setOpenActionsForMatchId] = useState<string | null>(null);
+  // Screen position of the open actions menu. The menu is drawn in a portal on
+  // document.body so the match card's overflow-hidden can never cut it off.
+  const [menuPos, setMenuPos] = useState<{
+    top?: number;
+    bottom?: number;
+    right: number;
+    maxHeight: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!openActionsForMatchId) return;
+    const close = (e?: Event) => {
+      // Scrolling inside the menu itself must not close it
+      if (e && e.target instanceof Element && e.target.closest('[data-actions-menu]')) return;
+      setOpenActionsForMatchId(null);
+    };
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [openActionsForMatchId]);
   // Which match's "Share Squad / Poster" modal is currently open (null = closed)
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
 
@@ -379,19 +403,53 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
 
                     <div className="relative">
                       <button
-                        onClick={() => {
+                        onClick={(e) => {
                           cricketAudio.playClick();
-                          setOpenActionsForMatchId(actionsOpen ? null : m.id);
+                          if (actionsOpen) {
+                            setOpenActionsForMatchId(null);
+                            return;
+                          }
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const gap = 6;
+                          const reserveBottom = 96; // keep clear of the bottom nav bar
+                          const spaceBelow = window.innerHeight - rect.bottom - reserveBottom;
+                          const spaceAbove = rect.top - 12;
+                          const right = Math.max(8, window.innerWidth - rect.right);
+                          if (spaceBelow < 280 && spaceAbove > spaceBelow) {
+                            // Not enough room below: open upwards
+                            setMenuPos({
+                              bottom: window.innerHeight - rect.top + gap,
+                              right,
+                              maxHeight: Math.max(160, spaceAbove - gap),
+                            });
+                          } else {
+                            setMenuPos({
+                              top: rect.bottom + gap,
+                              right,
+                              maxHeight: Math.max(160, spaceBelow - gap),
+                            });
+                          }
+                          setOpenActionsForMatchId(m.id);
                         }}
                         className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
                       >
                         <Settings className="w-3.5 h-3.5" />
                       </button>
 
-                      {actionsOpen && (
+                      {actionsOpen && menuPos && createPortal(
                         <>
-                          <div className="fixed inset-0 z-30" onClick={() => setOpenActionsForMatchId(null)} />
-                          <div className="absolute right-0 top-full mt-1.5 w-48 max-h-[60vh] overflow-y-auto rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-40 py-1">
+                          <div className="fixed inset-0 z-[80]" onClick={() => setOpenActionsForMatchId(null)} />
+                          <div
+                            data-actions-menu
+                            style={{
+                              position: 'fixed',
+                              top: menuPos.top,
+                              bottom: menuPos.bottom,
+                              right: menuPos.right,
+                              maxHeight: menuPos.maxHeight,
+                            }}
+                            className="w-48 overflow-y-auto overscroll-contain rounded-2xl bg-slate-950 border border-slate-800 shadow-2xl z-[90] py-1"
+                          >
                             <button
                               onClick={() => {
                                 setOpenActionsForMatchId(null);
@@ -464,7 +522,8 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                               </button>
                             )}
                           </div>
-                        </>
+                        </>,
+                        document.body
                       )}
                     </div>
                   </div>
