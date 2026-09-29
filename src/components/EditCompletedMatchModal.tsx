@@ -286,7 +286,6 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
   };
 
   const handleSave = () => {
-    if (missingFielderFor.length > 0) return;
     cricketAudio.playClick();
 
     const updatedInningsList = inningsList.map((inn, idx) => {
@@ -318,12 +317,24 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
 
         const pid = b.dismissedPlayerId || b.strikerId;
         const needsFielder = needsFielderFor(edit.wicketType);
+        const newFielderName = needsFielder ? edit.fielderName : '';
+
+        // The ball-by-ball "commentary" text is free text generated at scoring
+        // time (e.g. "OUT! Caught by Karan...") and doesn't regenerate on its
+        // own — swap the old fielder's name for the new one in that text too,
+        // so the Balls tab doesn't keep showing the old (wrong) fielder.
+        let updatedCommentary = b.commentary;
+        if (b.fielderName && newFielderName && b.fielderName !== newFielderName && updatedCommentary) {
+          updatedCommentary = updatedCommentary.split(b.fielderName).join(newFielderName);
+        }
+
         const updatedBall: BallOutcome = {
           ...b,
           dismissedPlayerId: pid,
           wicketType: edit.wicketType,
           fielderId: needsFielder ? edit.fielderId : undefined,
           fielderName: needsFielder ? edit.fielderName : undefined,
+          commentary: updatedCommentary,
         };
 
         const batter = finalBatting[pid];
@@ -715,8 +726,8 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
 
         <div className="p-4 border-t border-slate-800 flex items-center justify-end gap-2 flex-wrap">
           {missingFielderFor.length > 0 && (
-            <span className="text-[10px] font-bold text-rose-400 mr-auto">
-              Fielder select karo: {missingFielderFor.join(', ')}
+            <span className="text-[10px] font-bold text-amber-400 mr-auto">
+              Fielder missing for: {missingFielderFor.join(', ')} — save ho jayega, par unka fielding MVP point nahi milega.
             </span>
           )}
           <button
@@ -727,8 +738,7 @@ export const EditCompletedMatchModal: React.FC<EditCompletedMatchModalProps> = (
           </button>
           <button
             onClick={handleSave}
-            disabled={missingFielderFor.length > 0}
-            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-white text-xs font-black flex items-center gap-1.5"
           >
             <Save className="w-3.5 h-3.5" />
             Save Corrections
