@@ -229,9 +229,11 @@ export default function App() {
     const unsub = onSyncErrorChange((err) => setSyncError(err));
     return unsub;
   }, []);
-useEffect(() => {
-  cricketAudio.initVoices();
-}, []);
+
+  useEffect(() => {
+    cricketAudio.initVoices();
+  }, []);
+
   // Always resolve to the CURRENT player record from the live `players`
   // array — re-derives automatically whenever `players` updates too, so the
   // open profile modal never goes stale even mid-view.
@@ -807,6 +809,10 @@ useEffect(() => {
   const [isLoadingOlderMatches, setIsLoadingOlderMatches] = useState(false);
   const [hasMoreOlderMatches, setHasMoreOlderMatches] = useState(true);
   const [matchBeingEdited, setMatchBeingEdited] = useState<Match | null>(null);
+  // The lightweight "edit details" flow (name/venue/date/time, or a full
+  // saved-fixture edit) shares CreateMatchModal instead of a separate
+  // modal — see handleUpdateMatchDetails below.
+  const [matchBeingDetailEdited, setMatchBeingDetailEdited] = useState<Match | null>(null);
 
   const handleSaveMatchCorrections = (correctedMatch: Match) => {
     const withTimestamp: Match = { ...correctedMatch, updatedAt: Date.now() };
@@ -842,6 +848,24 @@ useEffect(() => {
       setCurrentMatch(withTimestamp);
     }
 
+    cloudDb.saveMatch(withTimestamp).catch(console.warn);
+  };
+
+  // Replaces a match everywhere it is kept — wherever it lives (a saved
+  // fixture, the currently open match, or both). Used for the lightweight
+  // "Edit Match Details" flow (name/venue/date/time) AND for a full saved
+  // fixture edit (teams/format/squad/scorer) coming out of CreateMatchModal.
+  const handleUpdateMatchDetails = (updated: Match) => {
+    const withTimestamp: Match = { ...updated, updatedAt: Date.now() };
+    setSavedMatches((prev) => {
+      const exists = prev.some((m) => m.id === withTimestamp.id);
+      return exists
+        ? prev.map((m) => (m.id === withTimestamp.id ? withTimestamp : m))
+        : [withTimestamp, ...prev];
+    });
+    if (currentMatch && currentMatch.id === withTimestamp.id) {
+      setCurrentMatch(withTimestamp);
+    }
     cloudDb.saveMatch(withTimestamp).catch(console.warn);
   };
 
@@ -932,14 +956,27 @@ useEffect(() => {
 
   // Shared entry point for opening ANY match into the scorer. A saved
   // fixture (status 'setup', never actually started/no balls bowled yet)
-  // always needs the toss decided first — this is the single place that
-  // check happens, so every "open this match" button (matches list, live
-  // feed, resume) is covered instead of only one of them.
+  // always needs its details confirmed first — this is the single place
+  // that check happens, so every "open this match" button (matches list,
+  // live feed, resume) is covered instead of only one of them. Only the
+  // match's creator, delegated scorer, or an admin may open a fixture this
+  // way; anyone else sees why they can't.
   const openMatchForScoring = (m: Match) => {
     if (m.status === 'setup' && m.innings1.balls.length === 0 && m.innings2.balls.length === 0) {
-      setTossWinnerChoice('A');
-      setTossDecisionChoice('bat');
-      setPendingTossMatch(m);
+      const canManageFixture = Boolean(
+        loggedInPlayer &&
+          (isAdmin ||
+            (m.creatorId && m.creatorId === loggedInPlayer.id) ||
+            (m.creatorProfileId && m.creatorProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase()) ||
+            (m.delegatedScorerProfileId &&
+              (m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase() ||
+                m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.id.toLowerCase())))
+      );
+      if (canManageFixture) {
+        setMatchBeingDetailEdited(m);
+      } else {
+        alert('This match has not started yet. Only the match creator or scorer can open or start it.');
+      }
       return;
     }
     setCurrentMatch(m);
@@ -1115,6 +1152,7 @@ useEffect(() => {
             isLoadingOlderMatches={isLoadingOlderMatches}
             hasMoreOlderMatches={hasMoreOlderMatches}
             onEditCompletedMatch={(m) => setMatchBeingEdited(m)}
+            onEditMatchDetails={(m) => setMatchBeingDetailEdited(m)}
             isDarkMode={isDarkMode}
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
           />
@@ -1598,6 +1636,40 @@ useEffect(() => {
         </div>
       )}
 
+      {/* Opening a saved fixture (Score Match) now goes through the full
+          Create/Edit screen instead of straight to the toss prompt above,
+          so the person can fix a wrong team, venue, date, time, format or
+          squad before starting. START MATCH from here still leads into the
+          same toss modal / handleStartNewMatch flow as creating a brand
+          new match. Also reused for the lightweight "Edit Match Details"
+          action on an already-started or completed match — there only
+          name/venue/date/time are editable. */}
+      {matchBeingDetailEdited && (
+        <CreateMatchModal
+          isOpen={true}
+          isEditMode={true}
+          editMatch={matchBeingDetailEdited}
+          onClose={() => setMatchBeingDetailEdited(null)}
+          teams={teams.filter(
+            (t) =>
+              (loggedInPlayer &&
+                (t.creatorId === loggedInPlayer.id || t.creatorProfileId === loggedInPlayer.profileId)) ||
+              t.id === matchBeingDetailEdited.teamA?.id ||
+              t.id === matchBeingDetailEdited.teamB?.id
+          )}
+          allTeams={teams}
+          tournaments={tournaments}
+          onOpenCreateTeam={() => {}}
+          onStartMatch={(m, openSquadFirst) => {
+            setMatchBeingDetailEdited(null);
+            handleStartNewMatch(m, openSquadFirst);
+          }}
+          onSaveFixture={handleSaveFixture}
+          onUpdateMatchDetails={handleUpdateMatchDetails}
+          allGlobalPlayers={players}
+          loggedInPlayer={loggedInPlayer}
+        />
+      )}
 
       {inspectedPlayer && (
         <PlayerProfileModal
