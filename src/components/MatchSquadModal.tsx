@@ -54,19 +54,19 @@ export const MatchSquadModal: React.FC<MatchSquadModalProps> = ({
   const [selectedSquadA, setSelectedSquadA] = useState<string[]>(
     match.playingSquadA && match.playingSquadA.length > 0
       ? match.playingSquadA
-      : match.teamA.players.map((p) => p.id)
+      : []
   );
   const [selectedSquadB, setSelectedSquadB] = useState<string[]>(
     match.playingSquadB && match.playingSquadB.length > 0
       ? match.playingSquadB
-      : match.teamB.players.map((p) => p.id)
+      : []
   );
-  const [captainA, setCaptainA] = useState<string>(match.captainA || match.teamA.players[0]?.id || '');
-  const [captainB, setCaptainB] = useState<string>(match.captainB || match.teamB.players[0]?.id || '');
-  const [viceCaptainA, setViceCaptainA] = useState<string>(match.viceCaptainA || match.teamA.players[1]?.id || '');
-  const [viceCaptainB, setViceCaptainB] = useState<string>(match.viceCaptainB || match.teamB.players[1]?.id || '');
-  const [keeperA, setKeeperA] = useState<string>(match.keeperA || match.teamA.players[3]?.id || match.teamA.players[0]?.id || '');
-  const [keeperB, setKeeperB] = useState<string>(match.keeperB || match.teamB.players[3]?.id || match.teamB.players[0]?.id || '');
+  const [captainA, setCaptainA] = useState<string>(match.captainA || '');
+  const [captainB, setCaptainB] = useState<string>(match.captainB || '');
+  const [viceCaptainA, setViceCaptainA] = useState<string>(match.viceCaptainA || '');
+  const [viceCaptainB, setViceCaptainB] = useState<string>(match.viceCaptainB || '');
+  const [keeperA, setKeeperA] = useState<string>(match.keeperA || '');
+  const [keeperB, setKeeperB] = useState<string>(match.keeperB || '');
 
   const [filterView, setFilterView] = useState<'all' | 'playing' | 'bench'>('all');
   const [searchQuery, setSearchQuery] = useState('');
@@ -78,19 +78,19 @@ export const MatchSquadModal: React.FC<MatchSquadModalProps> = ({
     if (isOpen) {
       const initialSquadA = match.playingSquadA && match.playingSquadA.length > 0
         ? match.playingSquadA
-        : match.teamA.players.map((p) => p.id);
+        : [];
       const initialSquadB = match.playingSquadB && match.playingSquadB.length > 0
         ? match.playingSquadB
-        : match.teamB.players.map((p) => p.id);
+        : [];
 
       setSelectedSquadA(initialSquadA);
       setSelectedSquadB(initialSquadB);
-      setCaptainA(match.captainA || match.teamA.captainId || match.teamA.players[0]?.id || '');
-      setCaptainB(match.captainB || match.teamB.captainId || match.teamB.players[0]?.id || '');
-      setViceCaptainA(match.viceCaptainA || match.teamA.viceCaptainId || match.teamA.players[1]?.id || '');
-      setViceCaptainB(match.viceCaptainB || match.teamB.viceCaptainId || match.teamB.players[1]?.id || '');
-      setKeeperA(match.keeperA || match.teamA.wicketKeeperId || match.teamA.players[3]?.id || match.teamA.players[0]?.id || '');
-      setKeeperB(match.keeperB || match.teamB.wicketKeeperId || match.teamB.players[3]?.id || match.teamB.players[0]?.id || '');
+      setCaptainA(match.captainA || '');
+      setCaptainB(match.captainB || '');
+      setViceCaptainA(match.viceCaptainA || '');
+      setViceCaptainB(match.viceCaptainB || '');
+      setKeeperA(match.keeperA || '');
+      setKeeperB(match.keeperB || '');
     }
   }, [isOpen, match.id, match.playingSquadA, match.playingSquadB, match.teamA.players, match.teamB.players]);
   
