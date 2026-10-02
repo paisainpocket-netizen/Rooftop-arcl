@@ -193,14 +193,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setKeeperA(editMatch.keeperA || '');
       return;
     }
-    if (teamA && teamA.players) {
-      const selected = teamA.players.slice(0, playersPerSide).map((p) => p.id);
-      setPlayingSquadA(selected);
-      setCaptainA(teamA.players[0]?.id || '');
-      setViceCaptainA(teamA.players[1]?.id || '');
-      setKeeperA(teamA.players[3]?.id || teamA.players[0]?.id || '');
-    }
-  }, [teamAId, isEditMode ? 0 : playersPerSide, editMatch?.id]);
+    // New team picked: start with nobody playing and no C / VC / WK. User selects manually.
+    setPlayingSquadA([]);
+    setCaptainA('');
+    setViceCaptainA('');
+    setKeeperA('');
+  }, [teamAId, editMatch?.id]);
 
   useEffect(() => {
     if (isEditMode && editMatch && editMatch.teamB?.id === teamBId) {
@@ -210,14 +208,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       setKeeperB(editMatch.keeperB || '');
       return;
     }
-    if (teamB && teamB.players) {
-      const selected = teamB.players.slice(0, playersPerSide).map((p) => p.id);
-      setPlayingSquadB(selected);
-      setCaptainB(teamB.players[0]?.id || '');
-      setViceCaptainB(teamB.players[1]?.id || '');
-      setKeeperB(teamB.players[3]?.id || teamB.players[0]?.id || '');
-    }
-  }, [teamBId, isEditMode ? 0 : playersPerSide, editMatch?.id]);
+    // New team picked: start with nobody playing and no C / VC / WK. User selects manually.
+    setPlayingSquadB([]);
+    setCaptainB('');
+    setViceCaptainB('');
+    setKeeperB('');
+  }, [teamBId, editMatch?.id]);
 
   const selectedTour = tournaments.find((t) => t.id === selectedTournamentId);
 
@@ -281,8 +277,8 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setMaxOversPerBowlerInput(String(clamped));
   };
 
-  const effectiveSquadA = playingSquadA.length > 0 ? playingSquadA : teamA.players.map((p) => p.id);
-  const effectiveSquadB = playingSquadB.length > 0 ? playingSquadB : teamB.players.map((p) => p.id);
+  const effectiveSquadA = playingSquadA;
+  const effectiveSquadB = playingSquadB;
 
   // Scorer: type a player's Profile ID (e.g. ARCL-002) or exact name.
   const resolveScorer = (): { ok: boolean; profileId?: string; name?: string } => {
@@ -362,12 +358,12 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       teamB,
       playingSquadA: effectiveSquadA,
       playingSquadB: effectiveSquadB,
-      captainA: captainA || teamA.players[0]?.id,
-      captainB: captainB || teamB.players[0]?.id,
-      viceCaptainA: viceCaptainA || teamA.players[1]?.id,
-      viceCaptainB: viceCaptainB || teamB.players[1]?.id,
-      keeperA: keeperA || teamA.players[3]?.id || teamA.players[0]?.id,
-      keeperB: keeperB || teamB.players[3]?.id || teamB.players[0]?.id,
+      captainA: captainA || undefined,
+      captainB: captainB || undefined,
+      viceCaptainA: viceCaptainA || undefined,
+      viceCaptainB: viceCaptainB || undefined,
+      keeperA: keeperA || undefined,
+      keeperB: keeperB || undefined,
       tossWinnerTeamId: effectiveTossWinnerId,
       tossDecision: effectiveTossDecision,
       status: status === 'scheduled' ? 'setup' : 'live',
@@ -482,6 +478,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
       alert(scorerNotFoundMessage);
       return;
     }
+    if (effectiveSquadA.length === 0 || effectiveSquadB.length === 0) {
+      const missing = effectiveSquadA.length === 0 ? teamA.name : teamB.name;
+      alert(`Please select the playing squad for ${missing} first.`);
+      return;
+    }
     setTossWinnerId(teamA.id);
     setShowTossModal(true);
   };
@@ -490,6 +491,10 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     cricketAudio.playBatHit();
     if (!loggedInPlayer) {
       alert('Please login first to create and score a match.');
+      return;
+    }
+    if (effectiveSquadA.length === 0 || effectiveSquadB.length === 0) {
+      alert('Please select the playing squad for both teams first.');
       return;
     }
     const matchObj = constructMatchObject('live');
