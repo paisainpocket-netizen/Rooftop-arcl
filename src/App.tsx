@@ -1340,6 +1340,7 @@ export default function App() {
           onStartMatch={handleStartNewMatch}
           onSaveFixture={handleSaveFixture}
           allGlobalPlayers={players}
+          onAddPlayerToTeam={handleAddPlayerToTeam}
           loggedInPlayer={loggedInPlayer}
         />
       )}
@@ -1667,6 +1668,7 @@ export default function App() {
           onSaveFixture={handleSaveFixture}
           onUpdateMatchDetails={handleUpdateMatchDetails}
           allGlobalPlayers={players}
+          onAddPlayerToTeam={handleAddPlayerToTeam}
           loggedInPlayer={loggedInPlayer}
         />
       )}
