@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Match, Team, Tournament, MatchSettings, Player } from '../types/cricket';
-import { Plus, X, Trophy, Shield, MapPin, Zap, ArrowLeft, Settings, Calendar, Clock, Check } from 'lucide-react';
+import { Plus, X, Trophy, Shield, MapPin, Zap, ArrowLeft, Settings, Calendar, Clock, Check, Search, UserPlus } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
+import { getNextSequentialProfileId } from '../utils/playerSequence';
 
 type FormatName = 'T10' | 'T20' | 'Club' | '100' | 'One Day' | 'Test Match' | 'Custom';
 
@@ -105,6 +106,11 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [keeperB, setKeeperB] = useState<string>('');
 
   const [squadModalTeam, setSquadModalTeam] = useState<'A' | 'B' | null>(null);
+  const [showAddPlayerModal, setShowAddPlayerModal] = useState(false);
+  const [searchProfileIdQuery, setSearchProfileIdQuery] = useState('');
+  const [newPlayerName, setNewPlayerName] = useState('');
+  const [newPlayerRole, setNewPlayerRole] = useState<'batsman' | 'bowler' | 'allrounder' | 'wicketkeeper'>('allrounder');
+  const [newPlayerPin, setNewPlayerPin] = useState('1234');
 
   const [showTossModal, setShowTossModal] = useState(false);
   const [tossWinnerId, setTossWinnerId] = useState<string>('');
@@ -214,6 +220,63 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     setViceCaptainB('');
     setKeeperB('');
   }, [teamBId, editMatch?.id]);
+
+  // ---- Add player from the squad popup ----
+  const squadTeam = squadModalTeam === 'A' ? teamA : teamB;
+  const addToCurrentSquad = (playerId: string) => {
+    if (squadModalTeam === 'A') setPlayingSquadA((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
+    else setPlayingSquadB((prev) => (prev.includes(playerId) ? prev : [...prev, playerId]));
+  };
+
+  const handleAddExistingPlayer = (playerToAdd: Player) => {
+    if (!squadModalTeam || !squadTeam.id) return;
+    cricketAudio.playClick();
+    if (squadTeam.players.some((p) => p.id === playerToAdd.id || p.profileId === playerToAdd.profileId)) {
+      alert(`${playerToAdd.name} is already in ${squadTeam.name}!`);
+      return;
+    }
+    if (!onAddPlayerToTeam) {
+      alert('Adding players is not available here.');
+      return;
+    }
+    onAddPlayerToTeam(squadTeam.id, playerToAdd);
+    addToCurrentSquad(playerToAdd.id);
+    setShowAddPlayerModal(false);
+    setSearchProfileIdQuery('');
+  };
+
+  const handleCreateNewPlayer = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!squadModalTeam || !squadTeam.id || !newPlayerName.trim()) return;
+    if (!onAddPlayerToTeam) {
+      alert('Adding players is not available here.');
+      return;
+    }
+    cricketAudio.playClick();
+    const newP: Player = {
+      id: `p-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      profileId: getNextSequentialProfileId(allGlobalPlayers),
+      pin: newPlayerPin || '1234',
+      isClaimed: false,
+      name: newPlayerName.trim(),
+      role: newPlayerRole,
+      battingStyle: 'Right-hand bat',
+      bowlingStyle: 'Right-arm medium',
+      jerseyNumber: Math.floor(Math.random() * 99) + 1,
+      isCustom: true,
+      stats: {
+        matches: 0, innings: 0, runs: 0, ballsFaced: 0, fours: 0, sixes: 0, fifties: 0, centuries: 0,
+        highestScore: 0, highestScoreNotOut: false, strikeRate: 0, battingAverage: 0,
+        oversBowled: 0, maidens: 0, runsConceded: 0, wickets: 0, bestBowlingWickets: 0, bestBowlingRuns: 0,
+        economy: 0, bowlingAverage: 0, threeWicketHauls: 0, fiveWicketHauls: 0,
+        catches: 0, runOuts: 0, stumpings: 0, momAwards: 0,
+      },
+    };
+    onAddPlayerToTeam(squadTeam.id, newP);
+    addToCurrentSquad(newP.id);
+    setNewPlayerName('');
+    setShowAddPlayerModal(false);
+  };
 
   const selectedTour = tournaments.find((t) => t.id === selectedTournamentId);
 
@@ -1110,10 +1173,20 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 <p className="text-[11px] text-slate-400">Tap C / VC / WK to assign roles. Any squad size allowed.</p>
               </div>
               <button
-                onClick={() => setSquadModalTeam(null)}
+                onClick={() => { setSquadModalTeam(null); setShowAddPlayerModal(false); }}
                 className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="px-3 pt-3">
+              <button
+                type="button"
+                onClick={() => { cricketAudio.playClick(); setShowAddPlayerModal(true); }}
+                className="w-full py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center justify-center gap-1.5 cursor-pointer shadow-md"
+              >
+                <UserPlus className="w-4 h-4" /> Add Player
               </button>
             </div>
 
@@ -1232,12 +1305,129 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
             <div className="p-3 bg-slate-950 border-t border-slate-800">
               <button
                 type="button"
-                onClick={() => setSquadModalTeam(null)}
+                onClick={() => { setSquadModalTeam(null); setShowAddPlayerModal(false); }}
                 className="w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black uppercase tracking-wider transition cursor-pointer shadow-md"
               >
                 Confirm Squad Selection
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {squadModalTeam && showAddPlayerModal && (
+        <div className="fixed inset-0 z-60 bg-black/80 backdrop-blur-md flex items-center justify-center p-3">
+          <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-3xl bg-slate-900 border border-slate-800 p-5 space-y-4 shadow-2xl text-slate-100">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-black text-white text-base">Add Player to {squadTeam.name}</h3>
+              <button
+                type="button"
+                onClick={() => setShowAddPlayerModal(false)}
+                className="p-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-emerald-400 uppercase">1. Search by Profile ID / Name</label>
+              <div className="relative">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchProfileIdQuery}
+                  onChange={(e) => setSearchProfileIdQuery(e.target.value)}
+                  placeholder="e.g. ARCL-002, Vicky, 98765..."
+                  className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {searchProfileIdQuery.trim() && (
+                <div className="max-h-48 overflow-y-auto space-y-1 bg-slate-950 p-2 rounded-xl border border-slate-800">
+                  {allGlobalPlayers
+                    .filter((gp) => {
+                      const q = searchProfileIdQuery.toLowerCase().trim();
+                      return (
+                        gp.profileId?.toLowerCase().includes(q) ||
+                        gp.id?.toLowerCase().includes(q) ||
+                        gp.name.toLowerCase().includes(q) ||
+                        (gp.phoneNumber && gp.phoneNumber.toLowerCase().includes(q))
+                      );
+                    })
+                    .slice(0, 8)
+                    .map((gp) => (
+                      <div
+                        key={gp.id}
+                        className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 flex items-center justify-between cursor-pointer border border-slate-800 transition"
+                        onClick={() => handleAddExistingPlayer(gp)}
+                      >
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-emerald-800/80 border border-emerald-600 flex items-center justify-center font-bold text-white text-xs">
+                            {gp.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-white">{gp.name}</p>
+                            <p className="text-[10px] font-mono text-emerald-400 font-bold">Profile ID: {gp.profileId || gp.id}</p>
+                          </div>
+                        </div>
+                        <span className="px-3 py-1 rounded-lg bg-emerald-600 text-xs font-bold text-white shadow">+ Add</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            <div className="relative flex py-1 items-center">
+              <div className="flex-grow border-t border-slate-800"></div>
+              <span className="flex-shrink mx-2 text-[10px] font-bold text-slate-500 uppercase">OR Create New</span>
+              <div className="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <form onSubmit={handleCreateNewPlayer} className="space-y-3">
+              <div>
+                <label className="text-[11px] font-bold text-slate-400 block mb-1">Player Name *</label>
+                <input
+                  type="text"
+                  required
+                  value={newPlayerName}
+                  onChange={(e) => setNewPlayerName(e.target.value)}
+                  placeholder="e.g. Jaggi Amritsaria"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1">Playing Role</label>
+                  <select
+                    value={newPlayerRole}
+                    onChange={(e: any) => setNewPlayerRole(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none"
+                  >
+                    <option value="allrounder">All-Rounder</option>
+                    <option value="batsman">Batsman</option>
+                    <option value="bowler">Bowler</option>
+                    <option value="wicketkeeper">Wicketkeeper</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="text-[11px] font-bold text-slate-400 block mb-1">Initial PIN (for login)</label>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={newPlayerPin}
+                    onChange={(e) => setNewPlayerPin(e.target.value)}
+                    placeholder="1234"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none"
+                  />
+                </div>
+              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black transition cursor-pointer shadow-md"
+              >
+                Create Player & Add to Squad
+              </button>
+            </form>
           </div>
         </div>
       )}
