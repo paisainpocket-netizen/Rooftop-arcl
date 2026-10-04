@@ -610,6 +610,14 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       <span className="font-bold text-emerald-400 truncate shrink-0">🏆 {m.result.summary}</span>
                     ) : null}
                   </div>
+
+                  {isCompleted && m.result?.playerOfTheMatch && (
+                    <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 pt-1">
+                      <span>⭐</span>
+                      <span className="text-slate-400">POTM:</span>
+                      <span className="truncate">{m.result.playerOfTheMatch.playerName}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer: creator + primary action */}
