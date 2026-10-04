@@ -138,6 +138,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   const [isEndMatchModalOpen, setIsEndMatchModalOpen] = useState(false);
   const [selectedWinnerId, setSelectedWinnerId] = useState<string>(match?.teamA?.id || '');
   const [selectedMomId, setSelectedMomId] = useState<string>('');
+  const [isMomModalOpen, setIsMomModalOpen] = useState(false);
   const [customResultSummary, setCustomResultSummary] = useState<string>('');
   const [showMvpRulesModal, setShowMvpRulesModal] = useState(false);
   const [mvpFilterTab, setMvpFilterTab] = useState<'best_economy' | 'most_maidens' | 'bowl_dots' | 'mvp' | 'top_scorers' | 'most_wickets'>('mvp');
@@ -1294,6 +1295,41 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   };
 
 
+  const handleOpenMomModal = () => {
+    const existing = match?.result?.playerOfTheMatch?.playerId;
+    if (existing) {
+      setSelectedMomId(existing);
+    } else if (recommendedMom) {
+      setSelectedMomId(recommendedMom.playerId);
+    }
+    setIsMomModalOpen(true);
+  };
+
+  const handleSaveMomOnly = () => {
+    if (!match?.result) return;
+    const momPlayer = [...(match?.teamA?.players || []), ...(match?.teamB?.players || [])].find((p) => p.id === selectedMomId);
+    const momScore = mvpScores.find((s) => s.playerId === selectedMomId);
+
+    onUpdateMatch({
+      ...match,
+      result: {
+        ...match.result,
+        playerOfTheMatch: momPlayer
+          ? {
+              playerId: momPlayer.id,
+              playerName: momPlayer.name,
+              teamName: match.teamA.players.some((p) => p.id === momPlayer.id) ? match.teamA.name : match.teamB.name,
+              reason: momScore
+                ? `${momScore.totalPoints} MVP Pts (${momScore.battingSummary || '0 runs'}, ${momScore.bowlingSummary || '0 wkts'})`
+                : 'Match winning performance',
+            }
+          : undefined,
+      },
+      updatedAt: Date.now(),
+    });
+    setIsMomModalOpen(false);
+  };
+
   const handleOpenEndMatchModal = () => {
     if (!selectedMomId && recommendedMom) {
       setSelectedMomId(recommendedMom.playerId);
@@ -1684,6 +1720,15 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
             <p className="text-xs font-bold text-amber-300 mt-1">
               🌟 Player of the Match: {match.result.playerOfTheMatch.playerName} ({match.result.playerOfTheMatch.teamName})
             </p>
+          )}
+          {canScore && isMatchFinished && (
+            <button
+              type="button"
+              onClick={handleOpenMomModal}
+              className="mt-2 px-3 py-1.5 rounded-xl bg-amber-500/20 border border-amber-500/50 text-amber-300 text-xs font-black cursor-pointer hover:bg-amber-500/30"
+            >
+              🌟 {match.result.playerOfTheMatch ? 'Change Player of the Match' : 'Set Player of the Match'}
+            </button>
           )}
         </div>
       )}
@@ -3562,6 +3607,84 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                 className="py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black shadow-lg shadow-rose-600/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Confirm Wicket
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PLAYER OF THE MATCH (MANUAL) MODAL */}
+      {isMomModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div
+            className={`w-full max-w-lg rounded-3xl border p-5 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto ${
+              isDarkMode ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+            }`}
+          >
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-br from-amber-500 to-yellow-600 flex items-center justify-center text-white text-base font-bold shadow-md">
+                  🌟
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-white">Player of the Match</h3>
+                  <p className="text-[10px] text-slate-400">Select or change the MOM manually</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsMomModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5 max-h-72 overflow-y-auto pr-1 text-xs">
+              {mvpScores.map((p, idx) => (
+                <button
+                  key={p.playerId}
+                  type="button"
+                  onClick={() => setSelectedMomId(p.playerId)}
+                  className={`w-full p-2 rounded-xl border text-left flex items-center justify-between transition cursor-pointer ${
+                    selectedMomId === p.playerId
+                      ? 'bg-amber-500/20 border-amber-500 text-amber-300 font-black'
+                      : 'bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-slate-800 text-slate-300 font-mono text-[10px] flex items-center justify-center font-bold">
+                      #{idx + 1}
+                    </span>
+                    <div>
+                      <span className="font-bold text-xs text-white">{p.playerName}</span>
+                      <span className="text-[10px] text-slate-400 block">{p.teamName}</span>
+                    </div>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="font-black text-amber-400 text-xs">{p.totalPoints} pts</span>
+                    <span className="text-[9px] text-slate-400 block">
+                      Bat {p.battingPoints} • Bowl {p.bowlingPoints}
+                    </span>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setIsMomModalOpen(false)}
+                className="py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveMomOnly}
+                disabled={!selectedMomId}
+                className="py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 text-xs font-black shadow-lg cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Save MOM
               </button>
             </div>
           </div>
