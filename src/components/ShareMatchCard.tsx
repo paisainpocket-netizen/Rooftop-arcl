@@ -137,6 +137,237 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     setTimeout(() => setCopied(false), 2500);
   };
 
+  // ---- IPL-style "MATCH DAY" fixture poster (upcoming matches only) ----
+  const formatFixtureDate = (raw?: string): string => {
+    if (!raw) return '';
+    const d = new Date(String(raw).replace(' ', 'T'));
+    if (isNaN(d.getTime())) return String(raw);
+    const day = d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+    const time = d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true }).toUpperCase();
+    return `${day} • ${time}`;
+  };
+
+  const drawFixturePoster = (ctx: CanvasRenderingContext2D, W: number, H: number) => {
+    const teamAColor = match.teamA.color || '#f59e0b';
+    const teamBColor = match.teamB.color || '#8b5cf6';
+
+    // Background: dark base + diagonal split in the two team colours
+    ctx.fillStyle = '#05070d';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(W * 0.56, 0); ctx.lineTo(W * 0.44, 760); ctx.lineTo(0, 760); ctx.closePath();
+    const gA = ctx.createLinearGradient(0, 0, W * 0.5, 760);
+    gA.addColorStop(0, rgba(teamAColor, 0.55));
+    gA.addColorStop(1, rgba(teamAColor, 0.05));
+    ctx.fillStyle = gA;
+    ctx.fill();
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(W * 0.56, 0); ctx.lineTo(W, 0); ctx.lineTo(W, 760); ctx.lineTo(W * 0.44, 760); ctx.closePath();
+    const gB = ctx.createLinearGradient(W, 0, W * 0.5, 760);
+    gB.addColorStop(0, rgba(teamBColor, 0.55));
+    gB.addColorStop(1, rgba(teamBColor, 0.05));
+    ctx.fillStyle = gB;
+    ctx.fill();
+    ctx.restore();
+
+    // Spark line along the diagonal
+    ctx.save();
+    ctx.shadowColor = '#fbbf24';
+    ctx.shadowBlur = 30;
+    ctx.strokeStyle = 'rgba(251,191,36,0.9)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.56, 0);
+    ctx.lineTo(W * 0.44, 760);
+    ctx.stroke();
+    ctx.restore();
+
+    // Bottom fade
+    const bf = ctx.createLinearGradient(0, H - 300, 0, H);
+    bf.addColorStop(0, 'transparent');
+    bf.addColorStop(1, 'rgba(0,0,0,0.6)');
+    ctx.fillStyle = bf;
+    ctx.fillRect(0, H - 300, W, 300);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(24, 24, W - 48, H - 48);
+
+    ctx.textAlign = 'center';
+
+    // MATCH DAY
+    let y = 118;
+    const mdGrad = ctx.createLinearGradient(W / 2 - 260, 0, W / 2 + 260, 0);
+    mdGrad.addColorStop(0, '#fde68a');
+    mdGrad.addColorStop(0.5, '#f59e0b');
+    mdGrad.addColorStop(1, '#fde68a');
+    ctx.save();
+    ctx.shadowColor = 'rgba(245,158,11,0.6)';
+    ctx.shadowBlur = 24;
+    ctx.fillStyle = mdGrad;
+    ctx.font = '900 96px sans-serif';
+    ctx.letterSpacing = '6px';
+    ctx.fillText('MATCH DAY', W / 2, y);
+    ctx.restore();
+
+    y += 52;
+    ctx.fillStyle = '#f8fafc';
+    ctx.font = '900 26px sans-serif';
+    ctx.save();
+    ctx.letterSpacing = '5px';
+    ctx.fillText('AMRITSAR ROOFTOP CRICKET LEAGUE', W / 2, y);
+    ctx.restore();
+
+    y += 40;
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '800 22px sans-serif';
+    ctx.fillText((match.tournamentName || match.name || 'ROOFTOP CHAMPIONSHIP').toUpperCase(), W / 2, y);
+
+    // Team badges
+    const badgeR = 92;
+    const lx = 220;
+    const rx = W - 220;
+    const by = 400;
+    const badge = (cx: number, color: string, initials: string) => {
+      const g = ctx.createLinearGradient(cx - badgeR, by - badgeR, cx + badgeR, by + badgeR);
+      g.addColorStop(0, rgba(color, 1));
+      g.addColorStop(1, rgba(color, 0.55));
+      ctx.save();
+      ctx.shadowColor = rgba(color, 0.8);
+      ctx.shadowBlur = 50;
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(cx, by, badgeR, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 5;
+      ctx.beginPath(); ctx.arc(cx, by, badgeR, 0, Math.PI * 2); ctx.stroke();
+      ctx.strokeStyle = rgba(color, 0.5);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(cx, by, badgeR + 14, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#05070d';
+      ctx.font = '900 64px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(initials.slice(0, 3).toUpperCase(), cx, by + 22);
+    };
+    badge(lx, teamAColor, match.teamA.shortName || match.teamA.name.slice(0, 3));
+    badge(rx, teamBColor, match.teamB.shortName || match.teamB.name.slice(0, 3));
+
+    // Fiery VS
+    ctx.save();
+    ctx.shadowColor = '#f97316';
+    ctx.shadowBlur = 40;
+    const vsG = ctx.createLinearGradient(0, by - 50, 0, by + 50);
+    vsG.addColorStop(0, '#fde047');
+    vsG.addColorStop(1, '#ea580c');
+    ctx.fillStyle = vsG;
+    ctx.font = 'italic 900 120px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('VS', W / 2, by + 42);
+    ctx.restore();
+
+    // Team names
+    const nameY = by + badgeR + 80;
+    const teamName = (cx: number, name: string, color: string) => {
+      ctx.font = '900 44px sans-serif';
+      let d = name.toUpperCase();
+      while (ctx.measureText(d).width > 400 && d.length > 4) d = d.slice(0, -1);
+      if (d !== name.toUpperCase()) d = d.trim() + '…';
+      ctx.save();
+      ctx.shadowColor = rgba(color, 0.7);
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.fillText(d, cx, nameY);
+      ctx.restore();
+    };
+    teamName(lx + 20, match.teamA.name, teamAColor);
+    teamName(rx - 20, match.teamB.name, teamBColor);
+
+    // Info strip
+    const stripY = 770;
+    ctx.strokeStyle = 'rgba(251,191,36,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(90, stripY - 38); ctx.lineTo(W - 90, stripY - 38); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(90, stripY + 26); ctx.lineTo(W - 90, stripY + 26); ctx.stroke();
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '800 26px sans-serif';
+    ctx.textAlign = 'center';
+    const when = formatFixtureDate(match.date);
+    ctx.fillText(`${match.totalOvers} Overs • Rooftop Turf Rules${when ? '  |  ' + when : ''}`, W / 2, stripY);
+
+    // Squad panels
+    const panelY = 830;
+    const panelH = 470;
+    const panelW = 464;
+    const gap = 32;
+    const leftX = W / 2 - gap / 2 - panelW;
+    const rightX = W / 2 + gap / 2;
+    [
+      { x: leftX, color: teamAColor, name: match.teamA.name, names: squadANames },
+      { x: rightX, color: teamBColor, name: match.teamB.name, names: squadBNames },
+    ].forEach(({ x, color, name, names }) => {
+      drawElevatedPanel(ctx, x, panelY, panelW, panelH, 26, 'rgba(15,23,42,0.92)');
+      ctx.strokeStyle = rgba(color, 0.8);
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, panelH, 26); ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, 8, [26, 26, 0, 0]); ctx.fill();
+
+      ctx.textAlign = 'center';
+      ctx.fillStyle = color;
+      ctx.font = '900 28px sans-serif';
+      ctx.fillText(name.toUpperCase().slice(0, 22), x + panelW / 2, panelY + 54);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '700 17px sans-serif';
+      ctx.fillText(`${names.length} Player${names.length === 1 ? '' : 's'}`, x + panelW / 2, panelY + 80);
+
+      // Fit rows to the panel height so there is no empty space
+      const shown = names.slice(0, 13);
+      const top = panelY + 112;
+      const rowGap = Math.min(40, (panelH - 112 - 24) / Math.max(shown.length, 1));
+      ctx.textAlign = 'left';
+      shown.forEach((n, i) => {
+        ctx.fillStyle = color;
+        ctx.font = '900 21px sans-serif';
+        ctx.fillText(`${i + 1}.`, x + 32, top + i * rowGap + 16);
+        ctx.fillStyle = '#f1f5f9';
+        ctx.font = '700 22px sans-serif';
+        ctx.fillText(n, x + 74, top + i * rowGap + 16);
+      });
+    });
+
+    // Venue
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '700 22px sans-serif';
+    ctx.fillText(`📍 ${match.venue || 'Rooftop Arena, Amritsar'}`, W / 2, H - 150);
+
+    // Footer
+    const footerY = H - 96;
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(W / 2 - 200, footerY - 34); ctx.lineTo(W / 2 + 200, footerY - 34); ctx.stroke();
+    ctx.font = '900 26px sans-serif';
+    const igText = '@amritsarrooftopcricket';
+    const igIconSize = 30;
+    const igGap = 12;
+    const igTextW = ctx.measureText(igText).width;
+    const igStartX = W / 2 - (igIconSize + igGap + igTextW) / 2;
+    drawInstagramIcon(ctx, igStartX, footerY - igIconSize / 2 - 2, igIconSize, '#f8fafc');
+    ctx.textAlign = 'left';
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillText(igText, igStartX + igIconSize + igGap, footerY + 9);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#475569';
+    ctx.font = '700 18px sans-serif';
+    ctx.fillText('ARCL ROOFTOP LEAGUE • OFFICIAL DIGITAL FIXTURE', W / 2, footerY + 44);
+  };
+
   // Pure Client-Side HTML5 Canvas Poster (0 KB Firebase data/storage) —
   // redesigned for a cleaner, more premium broadcast look: team-color
   // accents pulled from each team's own color, soft card shadows instead of
@@ -150,6 +381,11 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     canvas.height = H;
     const ctx = canvas.getContext('2d');
     if (!ctx) return canvas;
+
+    if (isScheduled) {
+      drawFixturePoster(ctx, W, H);
+      return canvas;
+    }
 
     const teamAColor = match.teamA.color || '#f59e0b';
     const teamBColor = match.teamB.color || '#38bdf8';
