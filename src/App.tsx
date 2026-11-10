@@ -36,6 +36,7 @@ import { Play, Trophy, Users, User, Shield, Sparkles, HelpCircle, AlertTriangle,
 import { cricketAudio } from './utils/audio';
 import { cloudDb, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
 import { applyMatchStatsToPlayers, recalculateCareerStats, emptyPlayerStats } from './utils/careerStats';
+import { recomputeInningsFromBalls, inningsTotalsDifferFromBalls } from './utils/recomputeInnings';
 
 const STORAGE_KEY_MATCH = 'arcl_current_match_v2';
 const STORAGE_KEY_SAVED_MATCHES = 'arcl_saved_matches_v2';
@@ -343,8 +344,21 @@ export default function App() {
           const localInnings: any = (prev as any)[key];
           if (cloudBalls && localInnings) {
             const localCount = (localInnings.balls || []).length;
+            // For a match that is still being played, the ball list is the
+            // source of truth: whenever balls are taken from the cloud (or the
+            // saved totals disagree with the balls) the totals, wickets, overs
+            // and batting/bowling stats are rebuilt from the balls so the
+            // scoring screen can never show different numbers than the Balls
+            // tab. Completed matches keep the old behaviour untouched, so
+            // match editing is not affected.
+            const isActiveMatch = prev.status === 'live' || prev.status === 'innings_break';
             if (cloudBalls.length > localCount) {
-              next[key] = { ...localInnings, balls: cloudBalls };
+              next[key] = isActiveMatch
+                ? recomputeInningsFromBalls(localInnings, cloudBalls)
+                : { ...localInnings, balls: cloudBalls };
+              changed = true;
+            } else if (isActiveMatch && inningsTotalsDifferFromBalls(localInnings)) {
+              next[key] = recomputeInningsFromBalls(localInnings);
               changed = true;
             }
           }
