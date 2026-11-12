@@ -23,6 +23,95 @@ import {
 import { cricketAudio } from '../utils/audio';
 import { ShareMatchCard } from './ShareMatchCard';
 
+
+// ---------------------------------------------------------------------------
+// Date-wise ordering: newest match on top. The order depends ONLY on the
+// match's own date (then its creation time, then its "Match N" number) and
+// never on when it was last opened/updated, so a match no longer jumps to the
+// top just because someone clicked or scored it.
+// ---------------------------------------------------------------------------
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+export const parseMatchDate = (raw?: string | number | null): number => {
+  if (raw === undefined || raw === null || raw === '') return 0;
+  if (typeof raw === 'number') return raw;
+  const s = String(raw).trim();
+
+  // 2026-11-09 or 2026-11-09T18:30 / "2026-11-09 18:30"
+  let m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](\d{1,2}):(\d{2}))?/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3], +(m[4] || 0), +(m[5] || 0)).getTime();
+
+  // 09/11/2026, 9-11-26, 09.11.2026  (day first, as used in India)
+  m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (m) {
+    let y = +m[3];
+    if (y < 100) y += 2000;
+    return new Date(y, +m[2] - 1, +m[1]).getTime();
+  }
+
+  // "9 Nov 2026", "Nov 9, 2026", "Mon, 9th November 2026"
+  const mon = s.match(/(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/i);
+  if (mon) {
+    const d = s.match(/\b(\d{1,2})(?:st|nd|rd|th)?\b/);
+    const y = s.match(/\b(20\d{2})\b/);
+    if (d) {
+      const year = y ? +y[1] : new Date().getFullYear();
+      return new Date(year, MONTH_INDEX[mon[1].toLowerCase()], +d[1]).getTime();
+    }
+  }
+
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? 0 : t;
+};
+
+// Creation time: the match's own createdAt, else the timestamp inside its id
+// (e.g. "match-1731150000000").
+const creationTime = (m: Match): number => {
+  const c = Number((m as any).createdAt);
+  if (c) return c;
+  const t = (m.id || '').match(/\d{13}/);
+  return t ? Number(t[0]) : 0;
+};
+
+// "Match 16" -> 16
+const matchNumberFromName = (name?: string): number => {
+  const n = (name || '').match(/(\d+)\s*$/);
+  return n ? Number(n[1]) : 0;
+};
+
+// The date used for ordering. If a match has no readable date, fall back to
+// when it was created so it still lands in a sensible place.
+const matchSortTime = (m: Match): number => parseMatchDate(m.date) || creationTime(m);
+
+const startOfDay = (ms: number): number => {
+  if (!ms) return 0;
+  const d = new Date(ms);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+};
+
+export const compareMatchesNewestFirst = (a: Match, b: Match): number => {
+  const ta = matchSortTime(a);
+  const tb = matchSortTime(b);
+  // 1) newer day first
+  const da = startOfDay(ta);
+  const db = startOfDay(tb);
+  if (da !== db) return db - da;
+  // 2) same day: later time first (matches saved with a time)
+  if (ta !== tb) return tb - ta;
+  // 3) same day and time: the one created later first
+  const ca = creationTime(a);
+  const cb = creationTime(b);
+  if (ca !== cb) return cb - ca;
+  // 4) "Match 16" above "Match 15"
+  const na = matchNumberFromName(a.name);
+  const nb = matchNumberFromName(b.name);
+  if (na !== nb) return nb - na;
+  return (b.id || '').localeCompare(a.id || '');
+};
+
 interface MatchesListViewProps {
   matches: Match[];
   currentMatch: Match | null;
@@ -153,7 +242,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   }, [filter, loggedInPlayer, myMatchesList, rawMatchesList, isUserAdmin]);
 
   const filteredMatches = useMemo(() => {
-    return activeBaseList.filter((m) => {
+    const filtered = activeBaseList.filter((m) => {
       if (filter === 'fixtures' && m.status !== 'setup') return false;
       if (filter === 'live' && m.status !== 'live') return false;
       if (filter === 'completed' && m.status !== 'completed') return false;
@@ -170,6 +259,8 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
       }
       return true;
     });
+    // Newest match (by its own date) on top; independent of last update.
+    return [...filtered].sort(compareMatchesNewestFirst);
   }, [activeBaseList, filter, searchQuery]);
 
   const handleConfirmDelete = () => {
