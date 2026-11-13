@@ -22,6 +22,7 @@ import {
   where,
   limit,
   startAfter,
+  getCountFromServer,
   Firestore,
 } from 'firebase/firestore';
 import { Match, Team, Tournament, Player } from '../types/cricket';
@@ -240,14 +241,145 @@ export function sanitizeForFirestore<T>(obj: T): T {
 
 // Throttling / Debouncing for Match Saves
 const pendingMatchSaves = new Map<string, { timeout: any; match: Match }>();
-// Tracks how many balls per innings we've already mirrored into the `balls`
-// subcollection for each match, so saveMatch only ever writes the DELTA
-// (new balls since the last save) instead of re-writing the whole history
-// every single time. Lives only in memory — reset on page reload, in which
-// case the first save of a session may harmlessly re-write already-saved
-// ball docs (same id, same content, so idempotent — just a small amount of
-// wasted write quota, not a correctness issue).
-const lastSavedBallCounts = new Map<string, Record<string, number>>();
+// ---------------------------------------------------------------------------
+// Ball mirroring bookkeeping.
+//
+// For every match we remember how many balls per innings are already in the
+// `balls` subcollection ("session" counts), so a save only writes the NEW
+// balls. Two things make this safe across app restarts and flaky networks:
+//  * On the first save of a match in a session we ask the server how many ball
+//    docs already exist (getCountFromServer = 1 cheap read per innings), so
+//    re-opening the app no longer re-writes every ball of the match. If the
+//    server can't be reached we fall back to the count we last saw
+//    acknowledged (kept in localStorage), never to 0.
+//  * The count moves forward as soon as writes are QUEUED (so a ball isn't
+//    queued twice while offline), and is thrown away if a write fails, so the
+//    next save re-checks the server and retries. A ball is therefore never
+//    skipped; the worst case is re-writing a few balls (same id + same
+//    content, so harmless).
+// ---------------------------------------------------------------------------
+const ballSessions = new Map<string, Record<string, number>>();
+const ballSessionInits = new Map<string, Promise<Record<string, number>>>();
+// Recent matches kept live-synced (older ones are loaded on demand via "Load Older").
+const RECENT_MATCHES_LIMIT = 20;
+const ACK_KEY = 'arcl_ball_acks_v1';
+
+function readAckCounts(matchId: string): Record<string, number> {
+  try {
+    if (typeof localStorage === 'undefined') return {};
+    const all = JSON.parse(localStorage.getItem(ACK_KEY) || '{}');
+    return all[matchId] || {};
+  } catch {
+    return {};
+  }
+}
+
+function writeAckCounts(matchId: string, counts: Record<string, number>) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const all = JSON.parse(localStorage.getItem(ACK_KEY) || '{}');
+    all[matchId] = counts;
+    localStorage.setItem(ACK_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function clearBallBookkeeping(matchId: string) {
+  ballSessions.delete(matchId);
+  ballSessionInits.delete(matchId);
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const all = JSON.parse(localStorage.getItem(ACK_KEY) || '{}');
+    delete all[matchId];
+    localStorage.setItem(ACK_KEY, JSON.stringify(all));
+  } catch {}
+}
+
+function promiseOrNullAfter<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => resolve(null), ms);
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      }
+    );
+  });
+}
+
+async function initBallSession(match: any): Promise<Record<string, number>> {
+  const base: Record<string, number> = {};
+  const remembered = readAckCounts(match.id);
+  for (const key of INNINGS_KEYS) {
+    const innings = match[key];
+    if (!innings) continue;
+    let count: number | null = null;
+    try {
+      const q = query(
+        collection(db, COLLECTIONS.MATCHES, match.id, 'balls'),
+        where('inningsKey', '==', key)
+      );
+      const snap = await promiseOrNullAfter(getCountFromServer(q), 4000);
+      count = snap ? snap.data().count : null;
+    } catch {
+      count = null;
+    }
+    if (count === null) count = remembered[key] || 0;
+    // Never trust more than we actually hold locally: if the cloud has MORE
+    // balls than this phone, treat the phone's own list as the starting point
+    // (same as before) and never delete anything for that reason.
+    base[key] = Math.min(count, (innings.balls || []).length);
+  }
+  return base;
+}
+
+// ---------------------------------------------------------------------------
+// Sync status: counts writes that were handed to Firestore but not yet
+// acknowledged by the server. Lets the UI show Saved / Syncing / Not synced.
+// ---------------------------------------------------------------------------
+let nextWriteId = 0;
+const inflightWrites = new Map<number, number>();
+let lastAckAt: number | null = null;
+
+function trackWrite<T>(p: Promise<T>): Promise<T> {
+  const id = nextWriteId++;
+  inflightWrites.set(id, Date.now());
+  const done = () => {
+    inflightWrites.delete(id);
+  };
+  p.then(() => {
+    lastAckAt = Date.now();
+    done();
+  }, done);
+  return p;
+}
+
+export interface SyncState {
+  pending: number;
+  oldestPendingMs: number;
+  lastAckAt: number | null;
+  quotaExceeded: boolean;
+  online: boolean;
+}
+
+export function getSyncState(): SyncState {
+  const now = Date.now();
+  let oldest = 0;
+  inflightWrites.forEach((started) => {
+    oldest = Math.max(oldest, now - started);
+  });
+  return {
+    pending: inflightWrites.size,
+    oldestPendingMs: oldest,
+    lastAckAt,
+    quotaExceeded: isQuotaExceeded,
+    online: typeof navigator === 'undefined' ? true : navigator.onLine,
+  };
+}
+
 const INNINGS_KEYS = ['innings1', 'innings2', 'innings3', 'innings4'] as const;
 // Keep Firestore documents comfortably under its 1MB-per-document hard
 // limit. Ordinary T10/T20/club matches never come close to this, but a
@@ -299,55 +431,63 @@ export const cloudDb = {
       const timeout = setTimeout(async () => {
         pendingMatchSaves.delete(match.id);
         try {
-          // 1) Mirror any NEW balls (since our last save of this match) into
-          // the `balls` subcollection, and DELETE any leftover ball doc(s)
-          // if the local array got shorter (an Undo). Doc id is
-          // deterministic (`${inningsKey}_${index}`) so both directions are
-          // safe to re-run/overlap.
-          const savedCounts = lastSavedBallCounts.get(match.id) || {};
-          const newSavedCounts: Record<string, number> = { ...savedCounts };
+          // 1) Work out which balls are NEW since what is already in the cloud
+          // (see the bookkeeping notes above) and which stale ones an Undo
+          // removed during this session.
+          let session = ballSessions.get(match.id);
+          if (!session) {
+            let init = ballSessionInits.get(match.id);
+            if (!init) {
+              init = initBallSession(match).then((s) => {
+                ballSessions.set(match.id, s);
+                return s;
+              });
+              ballSessionInits.set(match.id, init);
+            }
+            session = await init;
+          }
+
           const ballWrites: { ref: any; data: any }[] = [];
           const ballDeletes: any[] = [];
+          const newCounts: Record<string, number> = {};
           for (const key of INNINGS_KEYS) {
             const innings = (match as any)[key];
             if (!innings) continue;
             const balls: any[] = innings.balls || [];
-            const prevCount = savedCounts[key] || 0;
-            for (let i = prevCount; i < balls.length; i++) {
-              const ballRef = doc(db, COLLECTIONS.MATCHES, match.id, 'balls', `${key}_${i}`);
+            const have = session[key] || 0;
+            for (let i = have; i < balls.length; i++) {
               ballWrites.push({
-                ref: ballRef,
+                ref: doc(db, COLLECTIONS.MATCHES, match.id, 'balls', `${key}_${i}`),
                 data: sanitizeForFirestore({ ...balls[i], inningsKey: key, ballIndex: i }),
               });
             }
-            // Undo case: local count shrank since our last save — remove
-            // the now-stale doc(s) so no listener can ever see them again.
-            if (balls.length < prevCount) {
-              for (let i = balls.length; i < prevCount; i++) {
-                ballDeletes.push(doc(db, COLLECTIONS.MATCHES, match.id, 'balls', `${key}_${i}`));
-              }
+            // Undo during this session: remove the now-stale doc(s) so no
+            // listener can ever see (and resurrect) them.
+            for (let i = balls.length; i < have; i++) {
+              ballDeletes.push(doc(db, COLLECTIONS.MATCHES, match.id, 'balls', `${key}_${i}`));
             }
-            newSavedCounts[key] = balls.length;
+            session[key] = balls.length; // queued from here on, don't queue twice
+            newCounts[key] = balls.length;
           }
+
+          // 2) Hand EVERYTHING to Firestore right away, in order (Firestore
+          // keeps writes from one client in order and keeps them queued while
+          // offline), then wait for the server to acknowledge them.
+          const ops: Promise<unknown>[] = [];
           for (let i = 0; i < ballWrites.length; i += 400) {
             const batch = writeBatch(db);
             ballWrites.slice(i, i + 400).forEach(({ ref, data }) => batch.set(ref, data));
-            await batch.commit();
+            ops.push(trackWrite(batch.commit()));
           }
           for (let i = 0; i < ballDeletes.length; i += 400) {
             const batch = writeBatch(db);
             ballDeletes.slice(i, i + 400).forEach((ref) => batch.delete(ref));
-            await batch.commit();
+            ops.push(trackWrite(batch.commit()));
           }
-          lastSavedBallCounts.set(match.id, newSavedCounts);
 
-          // 2) Write the main match document (innings totals, batting/
-          // bowling stat maps, squads, result, etc — everything EXCEPT raw
-          // balls stay here as before, so nothing else in the app has to
-          // change). If, in the rare edge case, the document is still
-          // pushing toward the 1MB limit even without full recompute, drop
-          // the ball arrays from the main doc only — they remain fully
-          // available via the subcollection written above.
+          // 3) Main match document (innings totals, stat maps, squads, result,
+          // etc). If it is still pushing toward the 1MB limit, drop the ball
+          // arrays from the main doc only; they stay in the subcollection.
           const docRef = doc(db, COLLECTIONS.MATCHES, match.id);
           let sanitized: any = sanitizeForFirestore({
             ...match,
@@ -368,9 +508,17 @@ export const cloudDb = {
               `the balls subcollection.`
             );
           }
-          await setDoc(docRef, sanitized, { merge: true });
+          ops.push(trackWrite(setDoc(docRef, sanitized, { merge: true })));
+
+          await Promise.all(ops);
+          // Everything acknowledged by the server: remember it for next time.
+          writeAckCounts(match.id, newCounts);
           resolve();
         } catch (error) {
+          // Forget what we thought was queued so the next save re-checks the
+          // server and retries instead of skipping balls.
+          ballSessions.delete(match.id);
+          ballSessionInits.delete(match.id);
           if (!handleSyncFailure(error, 'saveMatch')) {
             console.warn('Error saving match to Firebase:', error);
           }
@@ -392,7 +540,7 @@ export const cloudDb = {
     if (!matchId || isQuotaExceeded) return;
     try {
       const docRef = doc(db, COLLECTIONS.MATCHES, matchId);
-      await deleteDoc(docRef);
+      await trackWrite(deleteDoc(docRef));
       try {
         const ballsCol = collection(db, COLLECTIONS.MATCHES, matchId, 'balls');
         const ballsSnap = await getDocs(ballsCol);
@@ -405,7 +553,7 @@ export const cloudDb = {
       } catch (subErr) {
         console.warn('Could not clean up ball subcollection for deleted match:', subErr);
       }
-      lastSavedBallCounts.delete(matchId);
+      clearBallBookkeeping(matchId);
     } catch (error) {
       if (!handleSyncFailure(error, 'deleteMatch')) {
         console.warn('Error deleting match from Firebase:', error);
@@ -514,7 +662,7 @@ export const cloudDb = {
     }
     try {
       const colRef = collection(db, COLLECTIONS.MATCHES);
-      const q = query(colRef, orderBy('updatedAt', 'desc'), limit(60));
+      const q = query(colRef, orderBy('updatedAt', 'desc'), limit(RECENT_MATCHES_LIMIT));
       let unsub: () => void = () => {};
       unsub = onSnapshot(
         q,
@@ -544,7 +692,7 @@ export const cloudDb = {
    * exactly once per call (no ongoing listener), so it doesn't add to the
    * continuous quota drain the way a live subscription would.
    */
-  async fetchOlderMatches(beforeUpdatedAt: number, pageSize: number = 60): Promise<Match[]> {
+  async fetchOlderMatches(beforeUpdatedAt: number, pageSize: number = RECENT_MATCHES_LIMIT): Promise<Match[]> {
     try {
       const colRef = collection(db, COLLECTIONS.MATCHES);
       const q = query(
@@ -573,7 +721,7 @@ export const cloudDb = {
     try {
       const docRef = doc(db, COLLECTIONS.TEAMS, team.id);
       const sanitized = sanitizeForFirestore(team);
-      await setDoc(docRef, sanitized, { merge: true });
+      await trackWrite(setDoc(docRef, sanitized, { merge: true }));
     } catch (error) {
       if (!handleSyncFailure(error, 'saveTeam')) {
         console.warn('Error saving team to Firebase:', error);
@@ -588,7 +736,7 @@ export const cloudDb = {
     if (!teamId || isQuotaExceeded) return;
     try {
       const docRef = doc(db, COLLECTIONS.TEAMS, teamId);
-      await deleteDoc(docRef);
+      await trackWrite(deleteDoc(docRef));
     } catch (error) {
       if (!handleSyncFailure(error, 'deleteTeam')) {
         console.warn('Error deleting team from Firebase:', error);
@@ -635,7 +783,7 @@ export const cloudDb = {
     try {
       const docRef = doc(db, COLLECTIONS.PLAYERS, player.id);
       const sanitized = sanitizeForFirestore(player);
-      await setDoc(docRef, sanitized, { merge: true });
+      await trackWrite(setDoc(docRef, sanitized, { merge: true }));
     } catch (error) {
       if (!handleSyncFailure(error, 'savePlayer')) {
         console.warn('Error saving player to Firebase:', error);
@@ -650,7 +798,7 @@ export const cloudDb = {
     if (!playerId || isQuotaExceeded) return;
     try {
       const docRef = doc(db, COLLECTIONS.PLAYERS, playerId);
-      await deleteDoc(docRef);
+      await trackWrite(deleteDoc(docRef));
     } catch (error) {
       if (!handleSyncFailure(error, 'deletePlayer')) {
         console.warn('Error deleting player from Firebase:', error);
@@ -697,7 +845,7 @@ export const cloudDb = {
     try {
       const docRef = doc(db, COLLECTIONS.TOURNAMENTS, tournament.id);
       const sanitized = sanitizeForFirestore(tournament);
-      await setDoc(docRef, sanitized, { merge: true });
+      await trackWrite(setDoc(docRef, sanitized, { merge: true }));
     } catch (error) {
       if (!handleSyncFailure(error, 'saveTournament')) {
         console.warn('Error saving tournament to Firebase:', error);
@@ -712,7 +860,7 @@ export const cloudDb = {
     if (!tournamentId || isQuotaExceeded) return;
     try {
       const docRef = doc(db, COLLECTIONS.TOURNAMENTS, tournamentId);
-      await deleteDoc(docRef);
+      await trackWrite(deleteDoc(docRef));
     } catch (error) {
       if (!handleSyncFailure(error, 'deleteTournament')) {
         console.warn('Error deleting tournament from Firebase:', error);
