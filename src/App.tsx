@@ -37,6 +37,7 @@ import { cricketAudio } from './utils/audio';
 import { cloudDb, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
 import { applyMatchStatsToPlayers, recalculateCareerStats, emptyPlayerStats } from './utils/careerStats';
 import { recomputeInningsFromBalls, inningsTotalsDifferFromBalls } from './utils/recomputeInnings';
+import { CloudTools } from './components/CloudTools';
 
 const STORAGE_KEY_MATCH = 'arcl_current_match_v2';
 const STORAGE_KEY_SAVED_MATCHES = 'arcl_saved_matches_v2';
@@ -891,7 +892,7 @@ export default function App() {
         (min, m) => Math.min(min, m.updatedAt || 0),
         Date.now()
       );
-      const older = await cloudDb.fetchOlderMatches(oldestUpdatedAt, 60);
+      const older = await cloudDb.fetchOlderMatches(oldestUpdatedAt, 20);
       if (older.length === 0) {
         setHasMoreOlderMatches(false);
       } else {
@@ -901,7 +902,7 @@ export default function App() {
           older.forEach((m) => map.set(m.id, m));
           return Array.from(map.values());
         });
-        if (older.length < 60) setHasMoreOlderMatches(false);
+        if (older.length < 20) setHasMoreOlderMatches(false);
       }
     } catch (err) {
       console.warn('Failed to load older matches:', err);
@@ -1040,6 +1041,8 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 pb-24 space-y-6">
+        <CloudTools />
+
         {syncError && (
           <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start justify-between gap-3 text-xs sm:text-sm animate-fade-in shadow-lg shadow-rose-950/20">
             <div className="flex items-start gap-2.5 min-w-0">
