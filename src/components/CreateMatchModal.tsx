@@ -88,6 +88,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
   const [playersPerSideInput, setPlayersPerSideInput] = useState<string>('11');
 
   const [totalWickets, setTotalWickets] = useState<number>(10);
+  const [lastManStands, setLastManStands] = useState<boolean>(false);
   const [wicketsInput, setWicketsInput] = useState<string>('10');
 
   const [maxOversPerBowler, setMaxOversPerBowler] = useState<number>(2);
@@ -162,6 +163,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     const wk = editMatch.settings?.maxWickets || 10;
     setTotalWickets(wk);
     setWicketsInput(String(wk));
+    setLastManStands(!!editMatch.settings?.lastManBattingAllowed);
 
     const savedLimit = editMatch.settings?.maxOversPerBowler;
     if (savedLimit !== undefined && savedLimit >= NO_LIMIT_VALUE) {
@@ -449,7 +451,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
         freeHitOnNoBall: base?.settings?.freeHitOnNoBall ?? true,
         wideRuns: base?.settings?.wideRuns ?? 1,
         noBallRuns: base?.settings?.noBallRuns ?? 1,
-        lastManBattingAllowed: base?.settings?.lastManBattingAllowed ?? false,
+        lastManBattingAllowed: lastManStands,
         pitchType: base?.settings?.pitchType ?? 'Concrete Terrace',
         ballType: base?.settings?.ballType ?? 'Tennis Heavy (Cosco)',
         venue,
@@ -1078,6 +1080,24 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                   <span className="text-xs text-slate-400 font-bold">Wkts</span>
                 </div>
               </div>
+            </div>
+
+            {/* LAST MAN STANDS */}
+            <div className="mt-2 pt-2 border-t border-slate-800">
+              <label className="flex items-center justify-between gap-2 bg-slate-950 p-2 rounded-xl border border-slate-800 cursor-pointer">
+                <span className="text-xs font-bold text-slate-300">
+                  Last man stands
+                  <span className="block text-[10px] font-normal text-slate-500">
+                    ON: aakhri batsman akela khel sakta hai (sab out hone par all out)
+                  </span>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={lastManStands}
+                  onChange={(e) => setLastManStands(e.target.checked)}
+                  className="w-5 h-5 accent-teal-500"
+                />
+              </label>
             </div>
 
             {/* MAX OVERS PER BOWLER — fully manual, or no limit */}
