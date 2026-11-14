@@ -191,6 +191,99 @@ export default function App() {
     return list;
   }, [currentMatch, savedMatches]);
 
+  // Cloud Tools (sync chip / Backup / Cloud Test) are only for people who actually score:
+  // the Admin, or anyone who created / was given scoring of a match that is live right now.
+  // Viewers never see them, and someone whose scoring is revoked loses them automatically.
+  const canUseCloudTools = useMemo(() => {
+    if (!loggedInPlayer) return false;
+    if (loggedInPlayer.profileId === 'ARCL-001') return true;
+    const myProfile = (loggedInPlayer.profileId || '').toLowerCase();
+    const myId = (loggedInPlayer.id || '').toLowerCase();
+    return allMatchesCombined.some((m) => {
+      if (m.status !== 'live' && m.status !== 'innings_break') return false;
+      const isCreatorOfMatch =
+        (m.creatorId && m.creatorId === loggedInPlayer.id) ||
+        (m.creatorProfileId && myProfile && m.creatorProfileId.toLowerCase() === myProfile);
+      const delegated = (m.delegatedScorerProfileId || '').toLowerCase();
+      const isDelegateOfMatch = Boolean(delegated && (delegated === myProfile || delegated === myId));
+      return Boolean(isCreatorOfMatch || isDelegateOfMatch);
+    });
+  }, [loggedInPlayer, allMatchesCombined]);
+
+  // Tournament table / leaderboard / MVP / caps must be built from ALL matches of a
+  // tournament, not only the recent ones kept live-synced. So when a screen that shows
+  // tournament numbers is open, the tournaments' matches are fetched once (and again at
+  // most every 2 minutes). Home only needs the ongoing tournaments; the Tournaments tab
+  // loads all of them.
+  const [tournamentFetchedMatches, setTournamentFetchedMatches] = useState<Match[]>([]);
+  const lastTournamentFetchRef = useRef<{ at: number; key: string }>({ at: 0, key: '' });
+  useEffect(() => {
+    const onTournamentsTab = activeTab === 'tournaments' || activeTab === 'teams';
+    const onHome = activeTab === 'live';
+    if (!onTournamentsTab && !onHome) return;
+    const wanted = (tournaments || [])
+      .filter((t) => onTournamentsTab || t.status === 'ongoing')
+      .map((t) => t.id);
+    if (wanted.length === 0) return;
+    const key = `${onTournamentsTab ? 'all' : 'home'}:${wanted.join(',')}`;
+    const last = lastTournamentFetchRef.current;
+    if (last.key === key && Date.now() - last.at < 120000) return;
+    lastTournamentFetchRef.current = { at: Date.now(), key };
+    let cancelled = false;
+    cloudDb.fetchMatchesByTournament(wanted).then((fetched) => {
+      if (cancelled || !fetched) return;
+      setTournamentFetchedMatches((prev) => {
+        const map = new Map<string, Match>();
+        prev.forEach((m) => map.set(m.id, m));
+        fetched.forEach((m) => map.set(m.id, m));
+        return Array.from(map.values());
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, tournaments]);
+
+  // Every match known on this phone: recent + live + tournament matches. Used for
+  // tournament numbers, teams and player stats. (My Matches keeps its own paged list.)
+  const matchesWithTournaments = useMemo(() => {
+    const map = new Map<string, Match>();
+    tournamentFetchedMatches.forEach((m) => map.set(m.id, m));
+    allMatchesCombined.forEach((m) => map.set(m.id, m)); // live / recent copies are freshest
+    deletedMatchIdsRef.current.forEach((id) => map.delete(id));
+    return Array.from(map.values());
+  }, [tournamentFetchedMatches, allMatchesCombined]);
+
+  // Is the logged-in person a scorer (creator / delegated / admin) of the open match?
+  const isScorerOfCurrentMatch = useMemo(() => {
+    if (!loggedInPlayer || !currentMatch) return false;
+    if (loggedInPlayer.profileId === 'ARCL-001') return true;
+    const myProfile = (loggedInPlayer.profileId || '').toLowerCase();
+    const myId = (loggedInPlayer.id || '').toLowerCase();
+    const delegated = (currentMatch.delegatedScorerProfileId || '').toLowerCase();
+    return Boolean(
+      (currentMatch.creatorId && currentMatch.creatorId === loggedInPlayer.id) ||
+      (currentMatch.creatorProfileId && myProfile && currentMatch.creatorProfileId.toLowerCase() === myProfile) ||
+      (delegated && (delegated === myProfile || delegated === myId))
+    );
+  }, [loggedInPlayer, currentMatch]);
+
+  // Viewers read the ball list from the match document itself. Only in the rare case
+  // that the document had to drop its ball list (very large match) do they also listen
+  // to the separate ball documents. Once decided for a match it stays decided.
+  const [trimmedBallsMatchId, setTrimmedBallsMatchId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!currentMatch || isScorerOfCurrentMatch || trimmedBallsMatchId === currentMatch.id) return;
+    const trimmed = [currentMatch.innings1, currentMatch.innings2, currentMatch.innings3, currentMatch.innings4].some(
+      (inn: any) =>
+        inn &&
+        ((inn.totalRuns || 0) > 0 || (inn.oversCompleted || 0) > 0 || (inn.ballsInCurrentOver || 0) > 0) &&
+        (inn.balls || []).length === 0
+    );
+    if (trimmed) setTrimmedBallsMatchId(currentMatch.id);
+  }, [currentMatch, isScorerOfCurrentMatch, trimmedBallsMatchId]);
+  const wantBallListener = isScorerOfCurrentMatch || (!!currentMatch && trimmedBallsMatchId === currentMatch.id);
+
   // Modals
   const [isCreateMatchOpen, setIsCreateMatchOpen] = useState(false);
   const [isMatchSquadOpen, setIsMatchSquadOpen] = useState(false);
@@ -359,7 +452,7 @@ export default function App() {
   // while waiting for the debounced cloud write to round-trip back.
   useEffect(() => {
     const openMatchId = currentMatch?.id;
-    if (!openMatchId) return;
+    if (!openMatchId || !wantBallListener) return;
     const unsub = cloudDb.subscribeToMatchBalls(openMatchId, (byInnings) => {
       setCurrentMatch((prev) => {
         if (!prev || prev.id !== openMatchId) return prev;
@@ -393,7 +486,7 @@ export default function App() {
       });
     });
     return unsub;
-  }, [currentMatch?.id]);
+  }, [currentMatch?.id, wantBallListener]);
 
   // Sync to LocalStorage (Instant local cache fallback)
   useEffect(() => {
@@ -902,35 +995,44 @@ export default function App() {
   // modal — see handleUpdateMatchDetails below.
   const [matchBeingDetailEdited, setMatchBeingDetailEdited] = useState<Match | null>(null);
 
+  // Rebuilds every player's career + format stats from ALL completed matches.
+  // The app only keeps the recent matches in memory, so the full list is fetched from
+  // the cloud first (and the freshest local copies win). If the cloud can't be reached
+  // the stats are left untouched, instead of being rebuilt from a partial list.
+  const rebuildStatsFromAllCompleted = async (localMatches: Match[], excludeMatchId?: string) => {
+    const cloudCompleted = await cloudDb.fetchAllCompletedMatches();
+    if (!cloudCompleted) {
+      alert('Players ke stats abhi update nahi ho paye (cloud se saare matches nahi mile). Match ka kaam ho gaya hai. Net theek hone par "Edit Completed Match" se ek baar save karke stats theek kar lena.');
+      return;
+    }
+    const map = new Map<string, Match>();
+    cloudCompleted.forEach((m) => map.set(m.id, m));
+    localMatches.forEach((m) => map.set(m.id, m));
+    if (excludeMatchId) map.delete(excludeMatchId);
+    deletedMatchIdsRef.current.forEach((id) => map.delete(id));
+    const all = Array.from(map.values());
+    setPlayers((prevPlayers) => {
+      const recalculated = recalculateCareerStats(prevPlayers, all);
+      recalculated.forEach((p, idx) => {
+        const prevP = prevPlayers[idx];
+        const changed =
+          !prevP ||
+          JSON.stringify(p.stats) !== JSON.stringify(prevP.stats) ||
+          JSON.stringify(p.formatStats) !== JSON.stringify(prevP.formatStats);
+        if (changed) {
+          cloudDb.savePlayer(p).catch(console.warn);
+        }
+      });
+      return recalculated;
+    });
+  };
+
   const handleSaveMatchCorrections = (correctedMatch: Match) => {
     const withTimestamp: Match = { ...correctedMatch, updatedAt: Date.now() };
 
-    setSavedMatches((prev) => {
-      const updated = prev.map((m) => (m.id === withTimestamp.id ? withTimestamp : m));
-      // Recalculate every player's career + format stats from scratch, since
-      // a manual correction can change runs/wickets/records for anyone
-      // involved in this match.
-      setPlayers((prevPlayers) => {
-        const recalculated = recalculateCareerStats(prevPlayers, updated);
-        // Persist to Firestore so the correction survives a page refresh
-        // instead of being silently overwritten by the next cloud sync.
-        // recalculateCareerStats always returns fresh object references, so
-        // compare the actual stats payload (not reference identity) to avoid
-        // re-saving every single player on every correction.
-        recalculated.forEach((p, idx) => {
-          const prevP = prevPlayers[idx];
-          const changed =
-            !prevP ||
-            JSON.stringify(p.stats) !== JSON.stringify(prevP.stats) ||
-            JSON.stringify(p.formatStats) !== JSON.stringify(prevP.formatStats);
-          if (changed) {
-            cloudDb.savePlayer(p).catch(console.warn);
-          }
-        });
-        return recalculated;
-      });
-      return updated;
-    });
+    setSavedMatches((prev) => prev.map((m) => (m.id === withTimestamp.id ? withTimestamp : m)));
+    // A manual correction can change runs/wickets/records for anyone in this match.
+    rebuildStatsFromAllCompleted([...savedMatches.filter((m) => m.id !== withTimestamp.id), withTimestamp]);
 
     if (currentMatch && currentMatch.id === withTimestamp.id) {
       setCurrentMatch(withTimestamp);
@@ -1010,25 +1112,12 @@ export default function App() {
         try { localStorage.setItem('arcl_saved_matches_v2', JSON.stringify(remainingMatches)); } catch {}
     cloudDb.deleteMatch(matchId).catch(console.warn);
 
-    // Recalculate every player's career + format stats from scratch using only
-    // the matches that remain, so a deleted match's runs/wickets/etc. are
-    // correctly removed instead of staying counted forever.
-    setPlayers((prev) => {
-      const recalculated = recalculateCareerStats(prev, remainingMatches);
-      // Persist to Firestore so the deletion's effect on stats survives a
-      // page refresh instead of being overwritten by stale cloud data.
-      recalculated.forEach((p, idx) => {
-        const prevP = prev[idx];
-        const changed =
-          !prevP ||
-          JSON.stringify(p.stats) !== JSON.stringify(prevP.stats) ||
-          JSON.stringify(p.formatStats) !== JSON.stringify(prevP.formatStats);
-        if (changed) {
-          cloudDb.savePlayer(p).catch(console.warn);
-        }
-      });
-      return recalculated;
-    });
+    // Career stats are only ever added when a match is COMPLETED, so deleting a live /
+    // unfinished match must not touch them. Only a completed match's runs/wickets/etc.
+    // are removed, by rebuilding from all remaining completed matches.
+    if (targetMatch && targetMatch.status === 'completed') {
+      rebuildStatsFromAllCompleted(remainingMatches, matchId);
+    }
 
     if (currentMatch && currentMatch.id === matchId) {
       const otherMatches = remainingMatches;
@@ -1115,7 +1204,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-6 pb-24 space-y-6">
-        <CloudTools />
+        {canUseCloudTools && <CloudTools />}
 
         {syncError && (
           <div className="p-3.5 sm:p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-rose-300 flex items-start justify-between gap-3 text-xs sm:text-sm animate-fade-in shadow-lg shadow-rose-950/20">
@@ -1195,7 +1284,7 @@ export default function App() {
             />
           ) : (
             <LiveFeedView
-              matches={allMatchesCombined}
+              matches={matchesWithTournaments}
               tournaments={tournaments}
               teams={teams}
               loggedInPlayer={loggedInPlayer}
@@ -1255,7 +1344,7 @@ export default function App() {
           <TeamsManager
             teams={teams}
             allPlayers={players}
-            allMatches={allMatchesCombined}
+            allMatches={matchesWithTournaments}
             loggedInPlayer={loggedInPlayer}
             isAdmin={isAdmin}
             onUpdateTeams={handleUpdateTeams}
@@ -1296,7 +1385,7 @@ export default function App() {
           <TournamentManager
             tournaments={tournaments}
             teams={teams}
-            allMatches={allMatchesCombined}
+            allMatches={matchesWithTournaments}
             onOpenCreateTournament={() => setIsCreateTournamentOpen(true)}
             onOpenMatchSettings={handleOpenMatchSettings}
             onOpenScorecard={(m) => {
@@ -1598,7 +1687,7 @@ export default function App() {
           onClose={() => setIsLoginModalOpen(false)}
           players={players}
           teams={teams}
-          matches={allMatchesCombined}
+          matches={matchesWithTournaments}
           loggedInPlayer={loggedInPlayer}
           onLogin={handleLogin}
           onLogout={handleLogout}
@@ -1770,7 +1859,7 @@ export default function App() {
           isOpen={!!inspectedPlayer}
           onClose={() => setInspectedPlayerId(null)}
           player={inspectedPlayer}
-          allMatches={allMatchesCombined}
+          allMatches={matchesWithTournaments}
           teams={teams}
           isDarkMode={isDarkMode}
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
