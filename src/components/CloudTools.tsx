@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { doc, setDoc, waitForPendingWrites } from 'firebase/firestore';
 import { db, getLastSyncError, getSyncState, isFirestoreQuotaExceeded } from '../lib/firebase';
 
@@ -71,8 +71,63 @@ function describeSync(): StatusView {
   return { label: '☁ Saved ✓', cls: 'border-emerald-600 text-emerald-300' };
 }
 
+const POS_KEY = 'arcl_cloudchip_pos_v1';
+type Pos = { x: number; y: number };
+
+function loadPos(): Pos | null {
+  try {
+    const raw = localStorage.getItem(POS_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (typeof p.x === 'number' && typeof p.y === 'number') return p;
+    }
+  } catch {}
+  return null;
+}
+
 export const CloudTools: React.FC = () => {
   const [open, setOpen] = useState(false);
+  // Chip position (drag it anywhere). null = default spot (bottom-left).
+  const [pos, setPos] = useState<Pos | null>(() => loadPos());
+  const dragRef = useRef<{ sx: number; sy: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const chipRef = useRef<HTMLButtonElement | null>(null);
+
+  const clampPos = (x: number, y: number): Pos => {
+    const w = chipRef.current?.offsetWidth || 90;
+    const h = chipRef.current?.offsetHeight || 34;
+    return {
+      x: Math.min(Math.max(0, x), Math.max(0, window.innerWidth - w)),
+      y: Math.min(Math.max(0, y), Math.max(0, window.innerHeight - h)),
+    };
+  };
+
+  const onPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const rect = chipRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    dragRef.current = { sx: e.clientX, sy: e.clientY, ox: rect.left, oy: rect.top, moved: false };
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch {}
+  };
+  const onPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = e.clientX - d.sx;
+    const dy = e.clientY - d.sy;
+    if (!d.moved && Math.abs(dx) + Math.abs(dy) < 8) return;
+    d.moved = true;
+    setPos(clampPos(d.ox + dx, d.oy + dy));
+  };
+  const onPointerUp = () => {
+    const d = dragRef.current;
+    dragRef.current = null;
+    if (d?.moved) {
+      setPos((p) => {
+        try { if (p) localStorage.setItem(POS_KEY, JSON.stringify(p)); } catch {}
+        return p;
+      });
+    } else {
+      setOpen((o) => !o);
+    }
+  };
   const [busy, setBusy] = useState(false);
   const [report, setReport] = useState<string[]>([]);
   const [status, setStatus] = useState<StatusView>(() => describeSync());
@@ -149,13 +204,24 @@ export const CloudTools: React.FC = () => {
   return (
     <>
       <button
-        onClick={() => setOpen((o) => !o)}
-        className={`fixed bottom-24 left-3 z-[70] px-3 py-2 rounded-full bg-slate-900/90 border text-[11px] font-bold shadow-lg ${status.cls}`}
+        ref={chipRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => { dragRef.current = null; }}
+        style={{
+          touchAction: 'none',
+          ...(pos ? { left: pos.x, top: pos.y } : {}),
+        }}
+        title="Dabao: Cloud Tools. Pakad kar kahin bhi rakho."
+        className={`fixed ${pos ? '' : 'bottom-24 left-3'} z-[70] px-3 py-2 rounded-full bg-slate-900/90 border text-[11px] font-bold shadow-lg select-none ${status.cls}`}
       >
         {status.label}
       </button>
       {open && (
-        <div className="fixed bottom-36 left-3 right-3 sm:right-auto sm:w-96 z-[70] rounded-2xl bg-slate-950 border border-slate-700 text-slate-100 p-3 space-y-2 shadow-2xl max-h-[60vh] overflow-y-auto">
+        <div
+          style={pos && pos.y < window.innerHeight / 2 ? { top: pos.y + 44, bottom: 'auto' } : undefined}
+          className="fixed bottom-36 left-3 right-3 sm:right-auto sm:w-96 z-[70] rounded-2xl bg-slate-950 border border-slate-700 text-slate-100 p-3 space-y-2 shadow-2xl max-h-[60vh] overflow-y-auto">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black">Cloud Tools</span>
             <button onClick={() => setOpen(false)} className="text-slate-400 text-xs px-2">
