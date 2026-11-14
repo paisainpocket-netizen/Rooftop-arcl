@@ -170,7 +170,16 @@ export const CloudTools: React.FC = () => {
     }
   };
 
+  const lastTestAtRef = useRef(0);
+
   const runTest = async () => {
+    // Each test writes once to the cloud, so allow it only every 30 seconds.
+    const waitMs = 30000 - (Date.now() - lastTestAtRef.current);
+    if (waitMs > 0) {
+      setReport([`Test abhi ho chuka hai. ${Math.ceil(waitMs / 1000)} second baad dobara dabao.`]);
+      return;
+    }
+    lastTestAtRef.current = Date.now();
     setBusy(true);
     const out: string[] = [];
     try {
