@@ -25,6 +25,8 @@ import {
   getCountFromServer,
   getDocFromServer,
   getDocsFromServer,
+  deleteField,
+  arrayUnion,
   Firestore,
 } from 'firebase/firestore';
 import { Match, Team, Tournament, Player } from '../types/cricket';
@@ -245,6 +247,14 @@ export function sanitizeForFirestore<T>(obj: T): T {
 const pendingMatchSaves = new Map<string, { timeout: any; match: Match }>();
 // Matches deleted in this session: nothing may write them back to the cloud.
 const deletedMatchIds = new Set<string>();
+// Match fields that the app removes on purpose (see saveMatch).
+const CLEARABLE_MATCH_FIELDS = [
+  'delegatedScorerProfileId',
+  'delegatedScorerName',
+  'result',
+  'followOnDecision',
+  'targetRuns',
+];
 // ---------------------------------------------------------------------------
 // Ball mirroring bookkeeping.
 //
@@ -534,6 +544,14 @@ export const cloudDb = {
               `the balls subcollection.`
             );
           }
+          // setDoc(..., {merge:true}) never removes a field that is simply missing
+          // (sanitizeForFirestore drops undefined values). For fields the app
+          // clears on purpose (revoking a scorer, undoing a finished match, going
+          // back an innings) the field must be deleted in the cloud explicitly,
+          // otherwise other phones keep seeing the old value forever.
+          for (const key of CLEARABLE_MATCH_FIELDS) {
+            if (!(key in sanitized)) sanitized[key] = deleteField();
+          }
           ops.push(trackWrite(setDoc(docRef, sanitized, { merge: true })));
 
           await Promise.all(ops);
@@ -573,6 +591,19 @@ export const cloudDb = {
       pendingMatchSaves.delete(matchId);
     }
     try {
+      // Tell every other phone that this match is deleted (a small shared list), so
+      // a phone that still has the match open cannot bring it back.
+      try {
+        await trackWrite(
+          setDoc(
+            doc(db, COLLECTIONS.SETTINGS, 'deleted_matches'),
+            { ids: arrayUnion(matchId), updatedAt: Date.now() },
+            { merge: true }
+          )
+        );
+      } catch (tombErr) {
+        console.warn('Could not record deleted match for other phones:', tombErr);
+      }
       const docRef = doc(db, COLLECTIONS.MATCHES, matchId);
       await trackWrite(deleteDoc(docRef));
       try {
@@ -627,6 +658,34 @@ export const cloudDb = {
         },
         (error) => {
           if (handleSyncFailure(error, 'subscribeToLiveMatches')) {
+            try { unsub(); } catch {}
+          }
+        }
+      );
+      return unsub;
+    } catch {
+      return () => {};
+    }
+  },
+
+  /**
+   * Listens to the shared list of deleted match ids. Every id is also blocked
+   * from being saved again by this phone.
+   */
+  subscribeToDeletedMatches(callback: (ids: string[]) => void) {
+    if (isQuotaExceeded) return () => {};
+    try {
+      let unsub: () => void = () => {};
+      unsub = onSnapshot(
+        doc(db, COLLECTIONS.SETTINGS, 'deleted_matches'),
+        (snap) => {
+          const data: any = snap.exists() ? snap.data() : null;
+          const ids: string[] = Array.isArray(data?.ids) ? data.ids : [];
+          ids.forEach((id) => deletedMatchIds.add(id));
+          callback(ids);
+        },
+        (error) => {
+          if (handleSyncFailure(error, 'subscribeToDeletedMatches')) {
             try { unsub(); } catch {}
           }
         }
