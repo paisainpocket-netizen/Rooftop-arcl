@@ -23,6 +23,8 @@ import {
   limit,
   startAfter,
   getCountFromServer,
+  getDocFromServer,
+  getDocsFromServer,
   Firestore,
 } from 'firebase/firestore';
 import { Match, Team, Tournament, Player } from '../types/cricket';
@@ -241,6 +243,8 @@ export function sanitizeForFirestore<T>(obj: T): T {
 
 // Throttling / Debouncing for Match Saves
 const pendingMatchSaves = new Map<string, { timeout: any; match: Match }>();
+// Matches deleted in this session: nothing may write them back to the cloud.
+const deletedMatchIds = new Set<string>();
 // ---------------------------------------------------------------------------
 // Ball mirroring bookkeeping.
 //
@@ -260,6 +264,23 @@ const pendingMatchSaves = new Map<string, { timeout: any; match: Match }>();
 // ---------------------------------------------------------------------------
 const ballSessions = new Map<string, Record<string, number>>();
 const ballSessionInits = new Map<string, Promise<Record<string, number>>>();
+/**
+ * A random id that identifies THIS phone/browser (used for the "one scorer at a
+ * time" lock). It is created once and then remembered on the phone.
+ */
+export function getDeviceId(): string {
+  try {
+    let id = localStorage.getItem('arcl_device_id_v1');
+    if (!id) {
+      id = `dev-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      localStorage.setItem('arcl_device_id_v1', id);
+    }
+    return id;
+  } catch {
+    return 'dev-unknown';
+  }
+}
+
 // Recent matches kept live-synced (older ones are loaded on demand via "Load Older").
 const RECENT_MATCHES_LIMIT = 20;
 const ACK_KEY = 'arcl_ball_acks_v1';
@@ -418,6 +439,7 @@ export const cloudDb = {
    */
   async saveMatch(match: Match): Promise<void> {
     if (!match || !match.id) return;
+    if (deletedMatchIds.has(match.id)) return; // deleted: never write it back
     if (isQuotaExceeded) {
       return; // Offline local state will preserve data
     }
@@ -430,6 +452,10 @@ export const cloudDb = {
     return new Promise((resolve) => {
       const timeout = setTimeout(async () => {
         pendingMatchSaves.delete(match.id);
+        if (deletedMatchIds.has(match.id)) {
+          resolve();
+          return;
+        }
         try {
           // 1) Work out which balls are NEW since what is already in the cloud
           // (see the bookkeeping notes above) and which stale ones an Undo
@@ -538,6 +564,14 @@ export const cloudDb = {
    */
   async deleteMatch(matchId: string): Promise<void> {
     if (!matchId || isQuotaExceeded) return;
+    // A save that is still waiting in the 500ms queue would re-create the match
+    // right after it is deleted. Cancel it and block further saves.
+    deletedMatchIds.add(matchId);
+    const queued = pendingMatchSaves.get(matchId);
+    if (queued) {
+      clearTimeout(queued.timeout);
+      pendingMatchSaves.delete(matchId);
+    }
     try {
       const docRef = doc(db, COLLECTIONS.MATCHES, matchId);
       await trackWrite(deleteDoc(docRef));
@@ -600,6 +634,48 @@ export const cloudDb = {
       return unsub;
     } catch {
       return () => {};
+    }
+  },
+
+  /**
+   * Reads the match document and its balls straight from the SERVER (never
+   * from this phone's cache). Used when a phone takes over scoring, so it
+   * starts from the newest data. Returns null if the server can't be reached.
+   */
+  async fetchMatchLatest(
+    matchId: string
+  ): Promise<{ match: Match | null; ballsByInnings: Record<string, any[]> } | null> {
+    if (!matchId || isQuotaExceeded) return null;
+    try {
+      const withTimeout = <T,>(p: Promise<T>, ms: number): Promise<T> =>
+        new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('timeout')), ms);
+          p.then(
+            (v) => { clearTimeout(t); resolve(v); },
+            (e) => { clearTimeout(t); reject(e); }
+          );
+        });
+      const [matchSnap, ballsSnap] = await withTimeout(
+        Promise.all([
+          getDocFromServer(doc(db, COLLECTIONS.MATCHES, matchId)),
+          getDocsFromServer(collection(db, COLLECTIONS.MATCHES, matchId, 'balls')),
+        ]),
+        15000
+      );
+      const byInnings: Record<string, any[]> = {};
+      ballsSnap.forEach((d) => {
+        const data: any = d.data();
+        const key = data.inningsKey || 'innings1';
+        if (!byInnings[key]) byInnings[key] = [];
+        byInnings[key].push(data);
+      });
+      Object.keys(byInnings).forEach((k) => {
+        byInnings[k].sort((a, b) => (a.ballIndex ?? 0) - (b.ballIndex ?? 0));
+      });
+      return { match: matchSnap.exists() ? (matchSnap.data() as Match) : null, ballsByInnings: byInnings };
+    } catch (error) {
+      console.warn('fetchMatchLatest failed:', error);
+      return null;
     }
   },
 
