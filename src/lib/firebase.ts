@@ -669,6 +669,54 @@ export const cloudDb = {
   },
 
   /**
+   * Reads all matches that belong to the given tournaments (one-time read, not a
+   * live listener). Used so a tournament's table / leaderboard / MVP / caps are
+   * built from ALL its matches and not only the few recent ones kept in memory.
+   * Returns null when nothing could be read.
+   */
+  async fetchMatchesByTournament(tournamentIds: string[]): Promise<Match[] | null> {
+    const ids = Array.from(new Set((tournamentIds || []).filter(Boolean)));
+    if (ids.length === 0 || isQuotaExceeded) return null;
+    try {
+      const out = new Map<string, Match>();
+      for (let i = 0; i < ids.length; i += 10) {
+        const chunk = ids.slice(i, i + 10);
+        const snap = await getDocs(
+          query(collection(db, COLLECTIONS.MATCHES), where('tournamentId', 'in', chunk))
+        );
+        snap.forEach((d) => out.set(d.id, d.data() as Match));
+      }
+      return Array.from(out.values());
+    } catch (error) {
+      console.warn('fetchMatchesByTournament failed:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Reads EVERY completed match from the server (not just the recent ones that are
+   * kept live-synced). Used only for rare operations that must see all matches
+   * (rebuilding career stats after a delete / correction). Returns null if the
+   * server can't be reached, so callers never work from a partial list.
+   */
+  async fetchAllCompletedMatches(): Promise<Match[] | null> {
+    if (isQuotaExceeded) return null;
+    try {
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 20000));
+      const snap = await Promise.race([
+        getDocsFromServer(query(collection(db, COLLECTIONS.MATCHES), where('status', '==', 'completed'))),
+        timeout,
+      ]);
+      const out: Match[] = [];
+      snap.forEach((d) => out.push(d.data() as Match));
+      return out;
+    } catch (error) {
+      console.warn('fetchAllCompletedMatches failed:', error);
+      return null;
+    }
+  },
+
+  /**
    * Listens to the shared list of deleted match ids. Every id is also blocked
    * from being saved again by this phone.
    */
