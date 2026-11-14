@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Match, Team, Tournament, Player } from './types/cricket';
 import { defaultTeams, defaultTournaments, createDefaultSampleMatch, defaultPlayersList } from './data/defaultData';
 import {
@@ -34,7 +34,7 @@ import { PlayerProfileModal } from './components/PlayerProfileModal';
 import { ShareMatchCard } from './components/ShareMatchCard';
 import { Play, Trophy, Users, User, Shield, Sparkles, HelpCircle, AlertTriangle, X } from 'lucide-react';
 import { cricketAudio } from './utils/audio';
-import { cloudDb, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
+import { cloudDb, getDeviceId, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
 import { applyMatchStatsToPlayers, recalculateCareerStats, emptyPlayerStats } from './utils/careerStats';
 import { recomputeInningsFromBalls, inningsTotalsDifferFromBalls } from './utils/recomputeInnings';
 import { CloudTools } from './components/CloudTools';
@@ -168,6 +168,9 @@ export default function App() {
     return sanitizeAndDeduplicateTournaments(defaultTournaments);
   });
 
+  // Ids of matches deleted on this phone (kept so stale cloud snapshots can't bring them back)
+  const deletedMatchIdsRef = useRef<Set<string>>(new Set());
+
   // Master combined matches list (memoized to prevent duplicate recalculations)
   const allMatchesCombined = useMemo(() => {
     const list: Match[] = [];
@@ -273,6 +276,8 @@ export default function App() {
       const map = new Map<string, Match>();
       recentMatchesRef.current.forEach((m) => map.set(m.id, m));
       liveMatchesRef.current.forEach((m) => map.set(m.id, m));
+      // Matches deleted on this phone must not come back from a stale listener result.
+      deletedMatchIdsRef.current.forEach((id) => map.delete(id));
       const merged = Array.from(map.values());
       setSavedMatches(merged);
       if (merged.length > 0) {
@@ -405,10 +410,24 @@ export default function App() {
 
   // Update live match
   const handleUpdateMatch = (updatedMatch: Match) => {
+    // "One scorer at a time": if nobody holds the scoring lock yet, the phone
+    // that is saving the match now becomes the holder.
+    const existingLock = (updatedMatch as any).scorerLock;
+    const shouldClaimLock =
+      !existingLock && (updatedMatch.status === 'live' || updatedMatch.status === 'innings_break');
     const withTimestamp: Match = {
       ...updatedMatch,
+      ...(shouldClaimLock
+        ? {
+            scorerLock: {
+              deviceId: getDeviceId(),
+              holderName: loggedInPlayer?.name || 'Scorer',
+              takenAt: Date.now(),
+            },
+          }
+        : {}),
       updatedAt: Date.now(),
-    };
+    } as Match;
 
     // Detect the exact moment a match transitions into 'completed' status,
     // so career stats are applied exactly once and never double-counted
@@ -445,6 +464,40 @@ export default function App() {
         return updated;
       });
     }
+  };
+
+  // Take over scoring on THIS phone. First reads the newest match + balls from
+  // the cloud server so nothing scored on the other phone is lost. If the cloud
+  // can't be reached, scoring is NOT taken (it would start from old data).
+  const handleTakeScoring = async (): Promise<boolean> => {
+    const matchId = currentMatch?.id;
+    if (!matchId) return false;
+    const latest = await cloudDb.fetchMatchLatest(matchId);
+    if (!latest) {
+      alert('Cloud se latest match nahi mil paya (internet ya limit ki dikkat). Scoring abhi nahi li gayi, thodi der baad dobara try karo.');
+      return false;
+    }
+    let base: any = currentMatch;
+    if (latest.match && (latest.match.updatedAt || 0) > (base.updatedAt || 0)) {
+      base = { ...latest.match };
+    }
+    (['innings1', 'innings2', 'innings3', 'innings4'] as const).forEach((key) => {
+      const cloudBalls = latest.ballsByInnings[key];
+      const inn: any = base[key];
+      if (cloudBalls && inn && cloudBalls.length > (inn.balls || []).length) {
+        base = { ...base, [key]: recomputeInningsFromBalls(inn, cloudBalls) };
+      }
+    });
+    handleUpdateMatch({
+      ...base,
+      status: base.status === 'setup' ? base.status : base.status,
+      scorerLock: {
+        deviceId: getDeviceId(),
+        holderName: loggedInPlayer?.name || 'Scorer',
+        takenAt: Date.now(),
+      },
+    } as Match);
+    return true;
   };
 
   // Start new match
@@ -931,6 +984,7 @@ export default function App() {
       }
     }
 
+    deletedMatchIdsRef.current.add(matchId);
     const remainingMatches = savedMatches.filter((m) => m.id !== matchId);
     setSavedMatches(remainingMatches);
         try { localStorage.setItem('arcl_saved_matches_v2', JSON.stringify(remainingMatches)); } catch {}
@@ -1117,6 +1171,7 @@ export default function App() {
               allPlayers={players}
               onOpenLoginModal={() => setIsLoginModalOpen(true)}
               onBackToFeed={() => setIsScoringConsoleOpen(false)}
+              onTakeScoring={handleTakeScoring}
             />
           ) : (
             <LiveFeedView
