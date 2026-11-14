@@ -299,6 +299,25 @@ export default function App() {
       applyMergedMatches();
     });
 
+    // Matches deleted on ANY phone: remove them here too and never save them back.
+    const unsubDeleted = cloudDb.subscribeToDeletedMatches((ids) => {
+      if (!ids || ids.length === 0) return;
+      ids.forEach((id) => deletedMatchIdsRef.current.add(id));
+      const gone = new Set(ids);
+      setSavedMatches((prev) => {
+        if (!prev.some((m) => gone.has(m.id))) return prev;
+        const next = prev.filter((m) => !gone.has(m.id));
+        try { localStorage.setItem('arcl_saved_matches_v2', JSON.stringify(next)); } catch {}
+        return next;
+      });
+      setCurrentMatch((prev) => {
+        if (!prev || !gone.has(prev.id)) return prev;
+        const candidates = [...liveMatchesRef.current, ...recentMatchesRef.current].filter((m) => !gone.has(m.id));
+        setIsScoringConsoleOpen(false);
+        return candidates[0] || createDefaultSampleMatch();
+      });
+    });
+
     // 3. Real-time subscription to Teams
     const unsubTeams = cloudDb.subscribeToTeams((cloudTeams) => {
       if (cloudTeams && cloudTeams.length > 0) {
@@ -323,6 +342,7 @@ export default function App() {
     return () => {
       unsubLiveMatches();
       unsubMatches();
+      unsubDeleted();
       unsubTeams();
       unsubPlayers();
       unsubTournaments();
