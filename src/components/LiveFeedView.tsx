@@ -75,6 +75,13 @@ const getTournamentLeader = (
   return { name: rows[0].name, color: rows[0].color };
 };
 
+// The app's built-in demo match (id from defaultData.ts). It is hidden ONLY while
+// nobody has scored a ball in it, so no real match can ever be hidden by this.
+const SAMPLE_MATCH_ID = 'match-live-sample-1';
+const isUnplayedSampleMatch = (m: Match): boolean =>
+  m.id === SAMPLE_MATCH_ID &&
+  [m.innings1, m.innings2, m.innings3, m.innings4].every((inn) => !inn || (inn.balls || []).length === 0);
+
 export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   currentMatch = null,
   savedMatches = [],
@@ -130,7 +137,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
         }
       });
     }
-    return list.filter((m) => !deletedIds.has(m.id));
+    return list.filter((m) => !deletedIds.has(m.id) && !isUnplayedSampleMatch(m));
   }, [currentMatch, savedMatches, matches, deletedIds]);
 
   // Extract real live matches
@@ -242,9 +249,9 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               🏏
             </div>
             <div className="max-w-sm mx-auto space-y-1">
-              <h3 className="text-sm font-bold text-slate-300">No Live Matches In Progress</h3>
+              <h3 className="text-sm font-bold text-slate-300">Abhi koi match nahi chal raha</h3>
               <p className="text-xs text-slate-500">
-                No terrace match is currently underway. Start scoring a new match below!
+                Naya match shuru karo aur live scoring ka maza lo 🏏
               </p>
             </div>
             <div className="pt-1">
@@ -324,16 +331,16 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               return (
                 <div
                   key={m.id}
-                  className="rounded-3xl border border-amber-500/40 bg-slate-900 shadow-xl shadow-amber-500/5 ring-1 ring-amber-500/20 overflow-hidden flex flex-col justify-between relative"
+                  className="rounded-2xl border border-amber-500/40 bg-slate-900 shadow-md overflow-hidden relative"
                 >
-                  {/* Card Header Strip */}
-                  <div className="bg-slate-950 px-4 py-2 border-b border-slate-800/80 flex items-center justify-between gap-2">
+                  {/* Compact header strip */}
+                  <div className="bg-slate-950 px-3 py-1.5 border-b border-slate-800/80 flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white animate-pulse flex items-center gap-1 shrink-0">
-                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-ping" />
+                      <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-rose-600 text-white flex items-center gap-1 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
                         LIVE • INN {currentInnNum}
                       </span>
-                      <span className="text-xs font-black text-amber-400 truncate">
+                      <span className="text-[11px] font-black text-amber-400 truncate">
                         {m.tournamentName || m.name || `${teamA.name} vs ${teamB.name}`}
                       </span>
                     </div>
@@ -390,104 +397,54 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Scoreboard Body */}
-                  <div className="p-4 space-y-3">
-                    <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                          <span className="font-black text-sm text-white truncate">{battingTeam.name}</span>
-                          <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 text-[9px] font-black uppercase">
-                            Batting
-                          </span>
-                        </div>
-                        <div className="text-right font-mono shrink-0">
-                          <span className="text-xl font-black text-emerald-400">
-                            {currentInn?.totalRuns || 0}-{currentInn?.totalWickets || 0}
-                          </span>
-                          <span className="text-[11px] text-slate-400 ml-1 font-sans">
-                            ({currentInn?.oversCompleted || 0}.{currentInn?.ballsInCurrentOver || 0}/{m.totalOvers} ov)
-                          </span>
-                        </div>
+                  {/* Compact scoreboard */}
+                  <div className="px-3 py-2 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                        <span className="font-black text-sm text-white truncate">{battingTeam.name}</span>
                       </div>
-
-                      <div className="flex items-center justify-between text-[11px] pt-1 border-t border-slate-800/60 text-slate-400">
-                        <span className="truncate">Bowling: <strong className="text-slate-200">{bowlingTeam.name}</strong></span>
-                        {currentInnNum === 2 && target ? (
-                          <span className="font-mono text-amber-400 font-bold shrink-0">
-                            Need {runsNeeded} off {ballsRemaining}b (Target: {target})
-                          </span>
-                        ) : (
-                          <span className="font-mono text-slate-300 font-bold shrink-0">
-                            CRR: {crr}
-                          </span>
-                        )}
+                      <div className="text-right font-mono shrink-0">
+                        <span className="text-lg font-black text-emerald-400">
+                          {currentInn?.totalRuns || 0}-{currentInn?.totalWickets || 0}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1 font-sans">
+                          ({currentInn?.oversCompleted || 0}.{currentInn?.ballsInCurrentOver || 0}/{m.totalOvers})
+                        </span>
                       </div>
+                    </div>
 
-                      {/* Overs progress bar */}
-                      <div className="pt-0.5">
-                        <div className="h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                          <div
-                            className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-500 transition-all"
-                            style={{ width: `${oversProgressPct}%` }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* RRR — only shown while chasing */}
-                      {currentInnNum === 2 && target && rrr && (
-                        <div className="flex items-center justify-between text-[11px] text-slate-400">
-                          <span>CRR: <strong className="text-slate-200 font-mono">{crr}</strong></span>
-                          <span>RRR: <strong className={`font-mono ${Number(rrr) > Number(crr) ? 'text-rose-400' : 'text-emerald-400'}`}>{rrr}</strong></span>
-                        </div>
-                      )}
-
-                      {/* Current partnership */}
-                      {(strikerStat || nonStrikerStat) && (
-                        <div className="text-[11px] text-slate-400 pt-0.5 border-t border-slate-800/60">
-                          Partnership: <strong className="text-amber-300 font-mono">{partnershipRuns}</strong>
-                          <span className="text-slate-500"> ({partnershipBalls} balls)</span>
-                        </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] text-slate-400">
+                      <span className="truncate">vs <strong className="text-slate-200">{bowlingTeam.name}</strong></span>
+                      {currentInnNum === 2 && target ? (
+                        <span className="font-mono text-amber-400 font-bold shrink-0">
+                          Need {runsNeeded} off {ballsRemaining}b
+                        </span>
+                      ) : (
+                        <span className="font-mono text-slate-300 font-bold shrink-0">CRR {crr}</span>
                       )}
                     </div>
 
-                    {/* Active Pitch Snapshot */}
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-1">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                          Batters
-                        </span>
-                        <div className="font-bold truncate text-emerald-300 text-[11px]">
-                          🏏 {strikerStat?.playerName || 'Striker'}* <span className="text-white font-mono font-black">{strikerStat?.runs || 0}</span> ({strikerStat?.balls || 0})
-                        </div>
+                    <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800/60">
+                      <span className="truncate text-emerald-300 font-bold">
+                        🏏 {strikerStat?.playerName || 'Striker'}* <span className="text-white font-mono">{strikerStat?.runs || 0}</span>({strikerStat?.balls || 0})
                         {nonStrikerStat && (
-                          <div className="truncate text-slate-300 text-[11px]">
-                            {nonStrikerStat.playerName} <span className="text-white font-mono">{nonStrikerStat.runs || 0}</span> ({nonStrikerStat.balls || 0})
-                          </div>
+                          <span className="text-slate-300 font-normal">
+                            {' '}· {nonStrikerStat.playerName} <span className="text-white font-mono">{nonStrikerStat.runs || 0}</span>({nonStrikerStat.balls || 0})
+                          </span>
                         )}
-                      </div>
-
-                      <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 space-y-1 text-right">
-                        <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
-                          Current Bowler
-                        </span>
-                        <div className="font-bold text-cyan-300 truncate text-[11px]">
-                          🎯 {bowlerStat?.playerName || 'Bowler'}
-                        </div>
-                        <div className="text-white font-mono font-black text-[11px]">
-                          {bowlerStat?.wickets || 0}/{bowlerStat?.runsConceded || 0} <span className="text-slate-400 font-sans font-normal">({bowlerStat?.oversBowled || 0}.{bowlerStat?.ballsInCurrentOver || 0} ov)</span>
-                        </div>
-                      </div>
+                      </span>
+                      <span className="shrink-0 text-cyan-300 font-bold truncate max-w-[40%]">
+                        🎯 {bowlerStat?.playerName || 'Bowler'}
+                      </span>
                     </div>
 
-                    {/* Ball By Ball Strip */}
                     {recentBalls.length > 0 && (
-                      <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                        <span className="text-[10px] font-bold text-slate-400 uppercase mr-1">This Over:</span>
+                      <div className="flex items-center gap-1 flex-wrap">
                         {recentBalls.map((b, i) => (
                           <span
                             key={i}
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black font-mono ${
+                            className={`w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black font-mono ${
                               b.isWicket
                                 ? 'bg-rose-600 text-white'
                                 : b.runsBat === 4
@@ -506,16 +463,16 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                     )}
                   </div>
 
-                  {/* Actions Footer */}
-                  <div className="p-3 bg-slate-950/80 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                  {/* Compact actions */}
+                  <div className="px-3 py-2 bg-slate-950/80 border-t border-slate-800/80 flex items-center justify-between gap-2">
                     <button
                       onClick={() => {
                         handleScorecard(m);
                         cricketAudio.playClick();
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
                     >
-                      <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                      <Eye className="w-3 h-3 text-cyan-400" />
                       <span>Scorecard</span>
                     </button>
 
@@ -524,9 +481,9 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                         handleScoring(m);
                         cricketAudio.playClick();
                       }}
-                      className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 text-xs font-black shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 text-[11px] font-black shadow transition flex items-center gap-1 cursor-pointer"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
+                      <Play className="w-3 h-3 fill-current" />
                       <span>Score Console</span>
                     </button>
                   </div>
