@@ -4,7 +4,7 @@ import {
   Plus, Trophy, Sparkles, Calendar, MapPin, Play, FileText, Settings, Edit3, 
   Image as ImageIcon, X, Check, Camera, Eye, Users, Shield, Copy, Hash, Award, 
   Flame, Zap, CheckCircle2, XCircle, Crown, Sliders, ChevronDown, BarChart3, 
-  Target, Gem, Star, ArrowUpRight, Activity, Share2, Download
+  Target, Gem, Star, ArrowUpRight, Activity, Share2, Download, ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { TeamProfileModal } from './TeamProfileModal';
@@ -251,7 +251,10 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
 }) => {
   const [tabFilter, setTabFilter] = useState<'my' | 'all'>('all');
   const [selectedTourId, setSelectedTourId] = useState<string>(initialTournamentId || tournaments[0]?.id || '');
+  // Which tournament's own page is open (null = show the tournament list)
+  const [openTournamentId, setOpenTournamentId] = useState<string | null>(initialTournamentId || null);
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
+  const [boundarySort, setBoundarySort] = useState<'twos' | 'fours' | 'sixes' | 'runs'>('twos');
   // Phone-only: which points-table row is expanded to show Status / Ties / Form
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
   const [isGeneratingTablePoster, setIsGeneratingTablePoster] = useState(false);
@@ -259,6 +262,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   useEffect(() => {
     if (initialTournamentId) {
       setSelectedTourId(initialTournamentId);
+      setOpenTournamentId(initialTournamentId);
       setTabFilter('all');
     }
   }, [initialTournamentId]);
@@ -791,14 +795,53 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         .sort((a, b) => b.fieldingDismissals - a.fieldingDismissals || b.catches - a.catches),
     [tournamentPlayerStats]
   );
-  const mostFoursList = useMemo(
-    () => [...tournamentPlayerStats].filter((p) => p.fours > 0).sort((a, b) => b.fours - a.fours),
-    [tournamentPlayerStats]
-  );
-  const mostSixesList = useMemo(
-    () => [...tournamentPlayerStats].filter((p) => p.sixes > 0).sort((a, b) => b.sixes - a.sixes),
-    [tournamentPlayerStats]
-  );
+  // One combined 2s / 4s / 6s table. 2s are counted from ball data (bat scored exactly 2,
+  // not a boundary); 4s and 6s come from the normal tournament stats.
+  type BoundaryRow = TournamentPlayerStat & { twos: number; boundaryRuns: number };
+  const boundaryRows = useMemo((): BoundaryRow[] => {
+    const twosMap: { [pid: string]: { n: number; name: string; teamId?: string } } = {};
+    (tournamentMatches || []).forEach((m) => {
+      ([m?.innings1, m?.innings2, m?.innings3, m?.innings4] as const).forEach((inn) => {
+        if (!inn || !Array.isArray(inn.balls)) return;
+        inn.balls.forEach((b) => {
+          if (!b || b.runsBat !== 2 || b.isFour || b.isSix || !b.strikerId) return;
+          const c = twosMap[b.strikerId] || (twosMap[b.strikerId] = { n: 0, name: b.strikerName || 'Player', teamId: inn.teamId });
+          c.n += 1;
+        });
+      });
+    });
+    const out: BoundaryRow[] = [];
+    const seen = new Set<string>();
+    tournamentPlayerStats.forEach((p) => {
+      seen.add(p.playerId);
+      const twos = twosMap[p.playerId]?.n || 0;
+      if (twos + (p.fours || 0) + (p.sixes || 0) === 0) return;
+      out.push({ ...p, twos, boundaryRuns: twos * 2 + (p.fours || 0) * 4 + (p.sixes || 0) * 6 });
+    });
+    Object.keys(twosMap).forEach((pid) => {
+      if (seen.has(pid)) return;
+      const teamObj = (teams || []).find((t) => t && t.id === twosMap[pid].teamId);
+      out.push({
+        playerId: pid,
+        playerName: twosMap[pid].name,
+        teamName: teamObj?.name || '',
+        teamColor: teamObj?.color || '#10b981',
+        runs: 0,
+        fours: 0,
+        sixes: 0,
+        twos: twosMap[pid].n,
+        boundaryRuns: twosMap[pid].n * 2,
+      } as unknown as BoundaryRow);
+    });
+    return out;
+  }, [tournamentMatches, tournamentPlayerStats, teams]);
+
+  const boundarySortedRows = useMemo(() => {
+    const val = (r: BoundaryRow) =>
+      boundarySort === 'twos' ? r.twos : boundarySort === 'fours' ? r.fours : boundarySort === 'sixes' ? r.sixes : r.boundaryRuns;
+    return [...boundaryRows].sort((a, b) => val(b) - val(a) || b.boundaryRuns - a.boundaryRuns || b.runs - a.runs);
+  }, [boundaryRows, boundarySort]);
+
   const mostDotsList = useMemo(
     () => [...tournamentPlayerStats].filter((p) => p.dots > 0).sort((a, b) => b.dots - a.dots),
     [tournamentPlayerStats]
@@ -818,13 +861,14 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     { key: 'runs', label: 'Orange Cap (Runs)', icon: <Flame className="w-3.5 h-3.5" /> },
     { key: 'wickets', label: 'Purple Cap (Wkts)', icon: <Target className="w-3.5 h-3.5" /> },
     { key: 'fielding', label: 'Fielding', icon: <Shield className="w-3.5 h-3.5" /> },
-    { key: 'boundaries', label: '4s & 6s', icon: <Zap className="w-3.5 h-3.5" /> },
+    { key: 'boundaries', label: '2s, 4s & 6s', icon: <Zap className="w-3.5 h-3.5" /> },
     { key: 'ballsFaced', label: 'Balls Faced', icon: <Eye className="w-3.5 h-3.5" /> },
     { key: 'dots', label: 'Dot Balls', icon: <Sliders className="w-3.5 h-3.5" /> },
   ];
 
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
+      {!openTournamentId && (<>
       {/* Broadcast Header Hub */}
       <div className="p-5 sm:p-7 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div className="space-y-1">
@@ -901,38 +945,77 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         </div>
       </div>
 
-      {/* Tournament Cards Carousel Strip */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1">
+      {/* Tournament list: compact rows, tap one to open its own page */}
+      <div className="space-y-2">
         {displayedTournaments.length === 0 ? (
-          <div className="text-xs text-slate-500 py-2">
+          <div className="text-xs text-slate-500 py-4 text-center rounded-2xl border border-slate-800 bg-slate-900">
             {tabFilter === 'my' ? "You haven't created any tournaments yet." : "No tournaments available."}
           </div>
         ) : (
           displayedTournaments.map((t) => {
-            const isSelected = t.id === selectedTournament?.id;
+            const tMatches = (allMatches || []).filter((m) => m && m.tournamentId === t.id);
+            const played = tMatches.filter((m) => m.status === 'completed').length;
+            const liveNow = tMatches.filter((m) => m.status === 'live').length;
+            const statusLabel = liveNow > 0 ? 'LIVE' : t.status === 'completed' ? 'COMPLETED' : t.status === 'upcoming' ? 'UPCOMING' : 'ONGOING';
+            const statusCls =
+              liveNow > 0
+                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
+                : t.status === 'completed'
+                ? 'bg-slate-700/40 text-slate-300 border-slate-600/50'
+                : t.status === 'upcoming'
+                ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
+                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
             return (
               <button
                 key={t.id}
                 onClick={() => {
                   setSelectedTourId(t.id);
+                  setOpenTournamentId(t.id);
+                  setStatsTab('points');
                   cricketAudio.playClick();
                 }}
-                className={`px-3.5 py-2.5 rounded-2xl border text-xs sm:text-sm font-black whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
-                  isSelected
-                    ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
-                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
-                }`}
+                className="w-full text-left flex items-center gap-3 p-3 rounded-2xl border border-slate-800 bg-slate-900 hover:border-amber-500/40 hover:bg-slate-900/80 transition cursor-pointer active:scale-[0.99]"
               >
-                <Trophy className="w-3.5 h-3.5" />
-                <span>{t.name}</span>
+                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 overflow-hidden">
+                  {t.bannerImage ? (
+                    <img src={t.bannerImage} alt="" className="w-full h-full object-cover" />
+                  ) : (
+                    <Trophy className="w-5 h-5" />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-sm text-white truncate">{t.name}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md border text-[9px] font-black tracking-wide shrink-0 ${statusCls}`}>
+                      {statusLabel}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-400 truncate mt-0.5">
+                    {[t.season, t.location, `${(t.teams || []).length} teams`, `${played} played`].filter(Boolean).join(' • ')}
+                  </div>
+                </div>
+                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
               </button>
             );
           })
         )}
       </div>
+      </>)}
 
-      {selectedTournament && (
+      {openTournamentId && selectedTournament && (
         <div className="space-y-6">
+          {/* Back to the tournament list */}
+          <button
+            onClick={() => {
+              setOpenTournamentId(null);
+              cricketAudio.playClick();
+            }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-xs font-black transition cursor-pointer active:scale-95"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>All Tournaments</span>
+          </button>
+
           {/* Selected Championship Hero Card */}
           <div className="rounded-3xl border border-slate-800 bg-slate-900 shadow-xl overflow-hidden relative">
             {selectedTournament.bannerImage && (
@@ -1357,27 +1440,58 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             )}
 
             {statsTab === 'boundaries' && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-800">
+              <div>
+                <div className="px-4 sm:px-5 pt-4 pb-3 flex items-center gap-1.5 flex-wrap bg-slate-950/60 border-b border-slate-800">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 mr-1">Rank by</span>
+                  {([
+                    ['twos', '2s'],
+                    ['fours', '4s'],
+                    ['sixes', '6s'],
+                    ['runs', 'Runs'],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      onClick={() => {
+                        setBoundarySort(key);
+                        cricketAudio.playClick();
+                      }}
+                      className={`px-3 py-1.5 rounded-full text-[11px] font-black border transition cursor-pointer ${
+                        boundarySort === key
+                          ? 'bg-amber-500 text-slate-950 border-amber-400'
+                          : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <PlayerStatPanel
-                  title="Most Fours (4s)"
-                  subtitle="Boundary count across all matches"
-                  emptyLabel="No fours hit yet."
-                  rows={mostFoursList}
+                  title="Scoring Shots"
+                  subtitle="2s, 4s and 6s per player. Runs = runs scored from these shots"
+                  emptyLabel="No 2s, 4s or 6s recorded yet."
+                  rows={boundarySortedRows}
                   bare
                   columns={[
-                    { header: '4s', render: (p) => <span className="text-amber-400 font-black">{p.fours}</span> },
-                    { header: 'Runs', render: (p) => <span>{p.runs}</span> },
-                  ]}
-                />
-                <PlayerStatPanel
-                  title="Most Sixes (6s)"
-                  subtitle="Maximums hit out of the rooftop"
-                  emptyLabel="No sixes hit yet."
-                  rows={mostSixesList}
-                  bare
-                  columns={[
-                    { header: '6s', render: (p) => <span className="text-amber-400 font-black">{p.sixes}</span> },
-                    { header: 'Runs', render: (p) => <span>{p.runs}</span> },
+                    {
+                      header: '2s',
+                      render: (p) => (
+                        <span className={boundarySort === 'twos' ? 'text-amber-400 font-black' : ''}>{(p as BoundaryRow).twos}</span>
+                      ),
+                    },
+                    {
+                      header: '4s',
+                      render: (p) => <span className={boundarySort === 'fours' ? 'text-amber-400 font-black' : ''}>{p.fours}</span>,
+                    },
+                    {
+                      header: '6s',
+                      render: (p) => <span className={boundarySort === 'sixes' ? 'text-amber-400 font-black' : ''}>{p.sixes}</span>,
+                    },
+                    {
+                      header: 'Runs',
+                      render: (p) => (
+                        <span className={boundarySort === 'runs' ? 'text-amber-400 font-black' : ''}>{(p as BoundaryRow).boundaryRuns}</span>
+                      ),
+                    },
                   ]}
                 />
               </div>
