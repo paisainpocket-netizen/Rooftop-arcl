@@ -11,6 +11,7 @@ import {
   ShotZone,
 } from '../types/cricket';
 import { cricketAudio } from '../utils/audio';
+import { getDeviceId } from '../lib/firebase';
 import {
   generateCommentary,
   getPressureBatsmanText,
@@ -74,6 +75,7 @@ interface LiveMatchScorerProps {
   allPlayers?: Player[];
   onOpenLoginModal?: () => void;
   onBackToFeed?: () => void;
+  onTakeScoring?: () => Promise<boolean>;
 }
 
 // Helper function for accurate ordinal text (1st, 2nd, 3rd, 4th)
@@ -97,6 +99,7 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   allPlayers = [],
   onOpenLoginModal,
   onBackToFeed,
+  onTakeScoring,
 }) => {
   const [centreTab, setCentreTab] = useState<'scoring' | 'scorecard' | 'wheel' | 'stats' | 'superstars' | 'balls' | 'squads'>(
     () => (match.status === 'completed' ? 'scorecard' : 'scoring')
@@ -176,7 +179,52 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
      (loggedInPlayer.phoneNumber && match.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.phoneNumber.toLowerCase()))
   );
 
-  const canScore = Boolean(isCreator || isDelegatedScorer || isAdminUser);
+  const hasScoringPermission = Boolean(isCreator || isDelegatedScorer || isAdminUser);
+  // "One scorer at a time": only the phone that holds the lock can score.
+  const scorerLock: any = (match as any).scorerLock;
+  const lockedByOtherPhone = Boolean(
+    scorerLock &&
+      scorerLock.deviceId !== getDeviceId() &&
+      match.status !== 'completed' &&
+      match.status !== 'abandoned'
+  );
+  const iHoldScorerLock = Boolean(scorerLock && scorerLock.deviceId === getDeviceId());
+  const canScore = hasScoringPermission && !lockedByOtherPhone;
+  const [isTakingScoring, setIsTakingScoring] = useState(false);
+
+  const handleTakeScoringClick = async () => {
+    if (isTakingScoring) return;
+    const who = scorerLock?.deviceId === 'free' ? '' : ` ${scorerLock?.holderName || 'doosre'} ke phone par`;
+    if (
+      scorerLock?.deviceId !== 'free' &&
+      !window.confirm(`Scoring abhi${who} chal rahi hai. Kya aap scoring yahan lena chahte ho? Doosre phone par scoring band ho jayegi.`)
+    ) {
+      return;
+    }
+    setIsTakingScoring(true);
+    try {
+      if (onTakeScoring) {
+        await onTakeScoring();
+      } else {
+        onUpdateMatch({
+          ...match,
+          scorerLock: { deviceId: getDeviceId(), holderName: loggedInPlayer?.name || 'Scorer', takenAt: Date.now() },
+          updatedAt: Date.now(),
+        } as Match);
+      }
+    } finally {
+      setIsTakingScoring(false);
+    }
+  };
+
+  const handleReleaseScoring = () => {
+    if (!window.confirm('Scoring doosre ko dene ke liye free kar dein? Aapke phone par scoring band ho jayegi.')) return;
+    onUpdateMatch({
+      ...match,
+      scorerLock: { deviceId: 'free', holderName: '', takenAt: Date.now() },
+      updatedAt: Date.now(),
+    } as Match);
+  };
   const canDelete = Boolean(isCreator || isAdminUser);
   const canDelegate = Boolean(isCreator || isAdminUser);
 
@@ -1515,6 +1563,36 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-3 sm:space-y-4 select-none pb-8">
+      {/* Scorer lock banner (one scorer at a time) */}
+      {hasScoringPermission && lockedByOtherPhone && (
+        <div className="p-3 rounded-2xl border border-amber-500/50 bg-amber-500/10 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold text-amber-200">
+            🔒 {scorerLock?.deviceId === 'free'
+              ? 'Scoring free hai. Scoring karne ke liye yahan le lo.'
+              : `Scoring abhi ${scorerLock?.holderName || 'doosre'} ke phone par chal rahi hai.`}
+          </span>
+          <button
+            type="button"
+            onClick={handleTakeScoringClick}
+            disabled={isTakingScoring}
+            className="px-3 py-2 rounded-xl bg-amber-500 text-slate-950 text-xs font-black cursor-pointer disabled:opacity-60"
+          >
+            {isTakingScoring ? 'Latest la raha hoon...' : 'Scoring yahan lo'}
+          </button>
+        </div>
+      )}
+      {hasScoringPermission && iHoldScorerLock && match.status !== 'completed' && (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={handleReleaseScoring}
+            className="px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-slate-300 text-[11px] font-bold cursor-pointer"
+          >
+            🔓 Doosre ko do
+          </button>
+        </div>
+      )}
+
       {/* 1. TOP HEADER & CONTROLS */}
       <div
         className={`p-3 sm:p-4 rounded-3xl border shadow-xl flex flex-wrap items-center justify-between gap-2 ${
@@ -4151,10 +4229,15 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
                       ...match,
                       delegatedScorerProfileId: undefined,
                       delegatedScorerName: undefined,
-                    };
+                      // The friend's phone must stop scoring. If this phone does not hold the
+                      // lock, mark it free so the creator takes it with the "latest data" step.
+                      ...(iHoldScorerLock
+                        ? {}
+                        : { scorerLock: { deviceId: 'free', holderName: '', takenAt: Date.now() } }),
+                    } as Match;
                     onUpdateMatch(updated);
                     cricketAudio.playClick('Scorer permission revoked');
-                    setDelegateSuccessMsg('Scorer permission revoked. You now have exclusive scoring control.');
+                    setDelegateSuccessMsg(iHoldScorerLock ? 'Scorer permission revoked. You now have exclusive scoring control.' : 'Scorer permission revoked. Ab "Scoring yahan lo" dabao.');
                     setTimeout(() => {
                       setDelegateSuccessMsg(null);
                     }, 2500);
