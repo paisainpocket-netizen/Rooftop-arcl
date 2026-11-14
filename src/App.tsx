@@ -297,6 +297,11 @@ export default function App() {
   // when the Tournaments tab opens. Separate from the "create match for
   // this tournament" state above so the two flows never collide.
   const [viewTournamentId, setViewTournamentId] = useState<string>('');
+  // A tournament opened from a Home card should not re-open by itself next time the
+  // Tournaments tab is visited from the menu.
+  useEffect(() => {
+    if (activeTab !== 'tournaments' && viewTournamentId) setViewTournamentId('');
+  }, [activeTab, viewTournamentId]);
   const [targetTeamIdForPlayer, setTargetTeamIdForPlayer] = useState<string>('');
   const [isScorecardModalOpen, setIsScorecardModalOpen] = useState(false);
   const [isShareCardOpen, setIsShareCardOpen] = useState(false);
