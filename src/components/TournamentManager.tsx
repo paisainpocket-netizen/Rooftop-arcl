@@ -12,8 +12,16 @@ import { calculateTournamentStats, TournamentPlayerStat, bestBowlingLabel } from
 
 type StatsTab = 'points' | 'mvp' | 'runs' | 'wickets' | 'fielding' | 'boundaries' | 'dots' | 'ballsFaced';
 
+// Tournament stages a team can be marked with. The first six are the original ones;
+// quarter_final and runner_up are new (kept as plain strings so older data still works).
+export type StatusKey = TeamTournamentStatus | 'quarter_final' | 'runner_up';
+
+export const STATUS_ORDER: StatusKey[] = [
+  'none', 'qualified', 'quarter_final', 'semi_final', 'final', 'champion', 'runner_up', 'eliminated',
+];
+
 export const STATUS_CONFIG: Record<
-  TeamTournamentStatus,
+  string,
   {
     label: string;
     punjabiLabel: string;
@@ -24,6 +32,8 @@ export const STATUS_CONFIG: Record<
     dotColor: string;
     icon: string;
     description: string;
+    posterLabel: string;
+    posterColor: string;
   }
 > = {
   none: {
@@ -36,61 +46,99 @@ export const STATUS_CONFIG: Record<
     dotColor: 'bg-slate-500',
     icon: '🏏',
     description: 'League stage match in progress',
+    posterLabel: '',
+    posterColor: '#64748b',
   },
   qualified: {
-    label: 'Qualified (Q)',
-    punjabiLabel: 'ਕੁਆਲੀਫਾਈ (Q)',
+    label: 'Qualified',
+    punjabiLabel: 'ਕੁਆਲੀਫਾਈ',
     badgeShort: 'Q',
     badgePill: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50 shadow-sm shadow-emerald-500/10',
     border: 'border-emerald-500/60',
     textColor: 'text-emerald-400 font-black',
     dotColor: 'bg-emerald-400',
-    icon: '🟢',
+    icon: '✅',
     description: 'Qualified for Playoffs / Knockouts',
+    posterLabel: 'QUALIFIED',
+    posterColor: '#10b981',
+  },
+  quarter_final: {
+    label: 'Quarter-Finalist',
+    punjabiLabel: 'ਕੁਆਰਟਰ-ਫਾਈਨਲ',
+    badgeShort: 'QF',
+    badgePill: 'bg-violet-500/20 text-violet-300 border-violet-500/50 shadow-sm shadow-violet-500/10',
+    border: 'border-violet-500/60',
+    textColor: 'text-violet-400 font-black',
+    dotColor: 'bg-violet-400',
+    icon: '🔷',
+    description: 'Advanced to Quarter-Final Match',
+    posterLabel: 'QUARTER-FINALIST',
+    posterColor: '#8b5cf6',
   },
   semi_final: {
-    label: 'Semi-Finalist (SF)',
-    punjabiLabel: 'ਸੈਮੀ-ਫਾਈਨਲ (SF)',
+    label: 'Semi-Finalist',
+    punjabiLabel: 'ਸੈਮੀ-ਫਾਈਨਲ',
     badgeShort: 'SF',
     badgePill: 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm shadow-amber-500/10',
     border: 'border-amber-500/60',
     textColor: 'text-amber-400 font-black',
     dotColor: 'bg-amber-400',
-    icon: '🟡',
+    icon: '🔶',
     description: 'Advanced to Semi-Final Match',
+    posterLabel: 'SEMI-FINALIST',
+    posterColor: '#f59e0b',
   },
   final: {
-    label: 'Finalist (F)',
-    punjabiLabel: 'ਫਾਈਨਲਿਸਟ (F)',
+    label: 'Finalist',
+    punjabiLabel: 'ਫਾਈਨਲਿਸਟ',
     badgeShort: 'F',
     badgePill: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/50 shadow-sm shadow-cyan-500/10',
     border: 'border-cyan-500/60',
     textColor: 'text-cyan-400 font-black',
     dotColor: 'bg-cyan-400',
-    icon: '🥈',
-    description: 'Reformed into Championship Grand Final',
+    icon: '⚔️',
+    description: 'Reached the Championship Grand Final',
+    posterLabel: 'FINALIST',
+    posterColor: '#06b6d4',
   },
   champion: {
     label: 'Champion 👑',
     punjabiLabel: 'ਚੈਂਪੀਅਨ / ਜੇਤੂ 👑',
     badgeShort: '🏆 WINNER',
-    badgePill: 'bg-gradient-to-r from-amber-500/30 via-yellow-500/30 to-amber-500/30 text-amber-200 border-amber-400/80 shadow-lg shadow-amber-500/20 font-black animate-pulse',
+    badgePill: 'bg-gradient-to-r from-amber-500/30 via-yellow-500/30 to-amber-500/30 text-amber-200 border-amber-400/80 shadow-lg shadow-amber-500/20 font-black',
     border: 'border-amber-400',
     textColor: 'text-amber-300 font-black',
     dotColor: 'bg-yellow-400',
     icon: '👑',
     description: 'Official Tournament Champion',
+    posterLabel: 'CHAMPION',
+    posterColor: '#fbbf24',
+  },
+  runner_up: {
+    label: 'Runner-up',
+    punjabiLabel: 'ਉਪ-ਜੇਤੂ',
+    badgeShort: 'RU',
+    badgePill: 'bg-slate-300/15 text-slate-200 border-slate-300/50 shadow-sm shadow-slate-300/10',
+    border: 'border-slate-300/60',
+    textColor: 'text-slate-200 font-black',
+    dotColor: 'bg-slate-300',
+    icon: '🥈',
+    description: 'Lost the Grand Final',
+    posterLabel: 'RUNNER-UP',
+    posterColor: '#cbd5e1',
   },
   eliminated: {
-    label: 'Eliminated (E)',
-    punjabiLabel: 'ਐਲੀਮੀਨੇਟ / ਬਾਹਰ (E)',
+    label: 'Eliminated',
+    punjabiLabel: 'ਬਾਹਰ',
     badgeShort: 'E',
     badgePill: 'bg-rose-500/20 text-rose-300 border-rose-500/50 shadow-sm shadow-rose-500/10',
     border: 'border-rose-500/60',
     textColor: 'text-rose-400 font-black',
     dotColor: 'bg-rose-500',
-    icon: '🔴',
+    icon: '❌',
     description: 'Knocked out from tournament',
+    posterLabel: 'ELIMINATED',
+    posterColor: '#f43f5e',
   },
 };
 
@@ -319,8 +367,9 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [editOvers, setEditOvers] = useState<number>(6);
   const [editFormat, setEditFormat] = useState<'Round Robin + Knockout' | 'League' | 'Knockout'>('Round Robin + Knockout');
   const [editBannerImage, setEditBannerImage] = useState<string>('');
+  const [editGroups, setEditGroups] = useState<{ [teamId: string]: string }>({});
 
-  const handleUpdateTeamStatus = (teamId: string, status: TeamTournamentStatus) => {
+  const handleUpdateTeamStatus = (teamId: string, status: StatusKey) => {
     if (!selectedTournament) return;
     if (!canEditSelectedTournament) {
       if (!loggedInPlayer && onOpenLoginModal) {
@@ -333,7 +382,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     const currentStatuses = selectedTournament.teamStatuses || {};
     const updatedStatuses: { [key: string]: TeamTournamentStatus } = {
       ...currentStatuses,
-      [teamId]: status,
+      [teamId]: status as TeamTournamentStatus,
     };
     const updatedTour: Tournament = {
       ...selectedTournament,
@@ -363,6 +412,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     setEditOvers(tour.oversPerMatch);
     setEditFormat(tour.format);
     setEditBannerImage(tour.bannerImage || '');
+    setEditGroups(((tour as any).teamGroups as { [teamId: string]: string }) || {});
     setIsEditingTournament(true);
   };
 
@@ -394,8 +444,13 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       return;
     }
 
-    const updatedTour: Tournament = {
+    const cleanGroups: { [teamId: string]: string } = {};
+    (selectedTournament.teams || []).forEach((id) => {
+      if (editGroups[id]) cleanGroups[id] = editGroups[id];
+    });
+    const updatedTour = {
       ...selectedTournament,
+      teamGroups: cleanGroups,
       tournamentId: editTournamentId.trim().toUpperCase() || selectedTournament.tournamentId || 'TRN-001',
       name: editName.trim(),
       trophyName: editTrophyName.trim() || `${editName.trim()} Trophy`,
@@ -404,7 +459,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       oversPerMatch: editOvers,
       format: editFormat,
       bannerImage: editBannerImage || undefined,
-    };
+    } as Tournament;
 
     if (onUpdateTournament) {
       onUpdateTournament(updatedTour);
@@ -534,199 +589,386 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
       });
   }, [tournamentMatches, teams]);
 
+  // Points table split by group (only when the tournament has groups assigned).
+  const pointsGroups = useMemo((): { label: string | null; rows: PointsTableRow[] }[] => {
+    const tg = ((selectedTournament as any)?.teamGroups || {}) as { [teamId: string]: string };
+    const labels = Array.from(new Set(Object.values(tg).filter(Boolean))).sort();
+    if (labels.length === 0) return [{ label: null, rows: pointsTable }];
+    const out = labels.map((g) => ({
+      label: `Group ${g}`,
+      rows: pointsTable.filter((r) => tg[r.teamId] === g),
+    }));
+    const others = pointsTable.filter((r) => !tg[r.teamId]);
+    if (others.length > 0) out.push({ label: 'Other Teams', rows: others });
+    return out;
+  }, [pointsTable, selectedTournament]);
+
   // ---- Points Table poster: builds a shareable PNG entirely on-device.
   // Uses the same `pointsTable` array already computed above for the on-
   // screen table, so the shared image always matches what's on screen —
   // no separate calculation, no server round-trip.
   const drawPointsTablePoster = (): HTMLCanvasElement => {
     const W = 1080;
-    const rowH = 92;
-    const headerBlockH = 420;
-    const tableHeaderH = 78;
-    const footerH = 190;
-    const rows = pointsTable.length;
-    const H = headerBlockH + tableHeaderH + rows * rowH + footerH;
+    const rowH = 112;
+    const colHeadH = 64;
+    const groupHeadH = 74;
+    const groupGap = 44;
+    const headerBlockH = 500;
+    const footerH = 200;
 
     const canvas = document.createElement('canvas');
+    const t = selectedTournament;
+    const groups = pointsGroups.filter((g) => g.rows.length > 0);
+    const statuses = ((t && t.teamStatuses) || {}) as { [id: string]: string };
+    const championRow = pointsTable.find((r) => statuses[r.teamId] === 'champion');
+    const bannerH = championRow ? 170 : 0;
+    let bodyH = 0;
+    groups.forEach((g) => {
+      bodyH += (g.label ? groupHeadH : 0) + colHeadH + g.rows.length * rowH + groupGap;
+    });
+    const H = headerBlockH + bannerH + bodyH + footerH;
     canvas.width = W;
     canvas.height = H;
     const ctx = canvas.getContext('2d');
-    if (!ctx || !selectedTournament) return canvas;
+    if (!ctx || !t) return canvas;
 
-    // Background
-    ctx.fillStyle = '#05070d';
+    const fit = (text: string, maxW: number): string => {
+      if (ctx.measureText(text).width <= maxW) return text;
+      let d = text;
+      while (d.length > 3 && ctx.measureText(d + '…').width > maxW) d = d.slice(0, -1);
+      return d.trim() + '…';
+    };
+    const goldGrad = (x1: number, x2: number) => {
+      const g = ctx.createLinearGradient(x1, 0, x2, 0);
+      g.addColorStop(0, '#fde68a');
+      g.addColorStop(0.5, '#f59e0b');
+      g.addColorStop(1, '#fde68a');
+      return g;
+    };
+
+    // ---- Background: deep navy, golden crown glow, fine diagonal pinstripes ----
+    ctx.fillStyle = '#04060b';
     ctx.fillRect(0, 0, W, H);
-    const glow = ctx.createRadialGradient(W / 2, 0, 40, W / 2, 0, 700);
-    glow.addColorStop(0, 'rgba(245, 158, 11, 0.22)');
+    const glow = ctx.createRadialGradient(W / 2, 0, 30, W / 2, 0, 820);
+    glow.addColorStop(0, 'rgba(245, 158, 11, 0.30)');
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow;
-    ctx.fillRect(0, 0, W, 700);
-    const bottomFade = ctx.createLinearGradient(0, H - 220, 0, H);
-    bottomFade.addColorStop(0, 'transparent');
-    bottomFade.addColorStop(1, 'rgba(0,0,0,0.55)');
-    ctx.fillStyle = bottomFade;
-    ctx.fillRect(0, H - 220, W, 220);
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(24, 24, W - 48, H - 48);
-
-    let y = 108;
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = '900 26px sans-serif';
+    ctx.fillRect(0, 0, W, 900);
     ctx.save();
-    ctx.letterSpacing = '4px';
+    ctx.strokeStyle = 'rgba(255,255,255,0.022)';
+    ctx.lineWidth = 2;
+    for (let x = -H; x < W; x += 46) {
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x + H * 0.58, H);
+      ctx.stroke();
+    }
+    ctx.restore();
+    const bottomFade = ctx.createLinearGradient(0, H - 300, 0, H);
+    bottomFade.addColorStop(0, 'transparent');
+    bottomFade.addColorStop(1, 'rgba(0,0,0,0.7)');
+    ctx.fillStyle = bottomFade;
+    ctx.fillRect(0, H - 300, W, 300);
+
+    // ---- Double frame (gold outer, faint inner) ----
+    ctx.strokeStyle = 'rgba(245,158,11,0.55)';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(22, 22, W - 44, H - 44);
+    ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(36, 36, W - 72, H - 72);
+
+    // ---- Header ----
+    ctx.textAlign = 'center';
+    let y = 116;
+    ctx.save();
+    ctx.fillStyle = '#e2e8f0';
+    ctx.font = '900 24px sans-serif';
+    ctx.letterSpacing = '6px';
     ctx.fillText('AMRITSAR ROOFTOP CRICKET LEAGUE', W / 2, y);
     ctx.restore();
-
-    y += 42;
+    ctx.strokeStyle = 'rgba(245,158,11,0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(90, y + 26); ctx.lineTo(W / 2 - 60, y + 26); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(W / 2 + 60, y + 26); ctx.lineTo(W - 90, y + 26); ctx.stroke();
     ctx.fillStyle = '#f59e0b';
-    ctx.font = '800 22px sans-serif';
-    ctx.fillText((selectedTournament.trophyName || selectedTournament.name).toUpperCase(), W / 2, y);
+    ctx.font = '900 22px sans-serif';
+    ctx.fillText('🏆', W / 2, y + 36);
 
-    y += 36;
+    // Tournament name: biggest size that fits
+    y += 130;
+    let size = 84;
+    const tname = (t.name || 'TOURNAMENT').toUpperCase();
+    ctx.font = `900 ${size}px sans-serif`;
+    while (ctx.measureText(tname).width > W - 150 && size > 34) {
+      size -= 2;
+      ctx.font = `900 ${size}px sans-serif`;
+    }
+    ctx.save();
+    ctx.shadowColor = 'rgba(245,158,11,0.55)';
+    ctx.shadowBlur = 34;
+    ctx.fillStyle = goldGrad(W / 2 - 300, W / 2 + 300);
+    ctx.fillText(tname, W / 2, y);
+    ctx.restore();
+
+    y += 52;
+    ctx.fillStyle = '#fbbf24';
+    ctx.font = '800 26px sans-serif';
+    ctx.fillText(fit((t.trophyName || '').toUpperCase(), W - 160), W / 2, y);
+
+    y += 40;
     ctx.fillStyle = '#94a3b8';
-    ctx.font = '700 20px sans-serif';
-    ctx.fillText(`${selectedTournament.season} • ${selectedTournament.location}`, W / 2, y);
+    ctx.font = '700 22px sans-serif';
+    ctx.fillText(fit(`${t.season || ''}  •  ${t.location || ''}  •  ${t.oversPerMatch} Overs`, W - 160), W / 2, y);
 
-    // Status pill
-    y += 56;
-    const pillText = 'POINTS TABLE';
+    // Two pills: POINTS TABLE + matches played
+    y += 62;
+    const played = completedMatchesCount;
+    const pills = [
+      { text: 'POINTS TABLE', fill: '#059669', glow: 'rgba(5,150,105,0.45)' },
+      { text: `AFTER ${played} MATCH${played === 1 ? '' : 'ES'}`, fill: '#b45309', glow: 'rgba(180,83,9,0.45)' },
+    ];
     ctx.font = '900 20px sans-serif';
-    const pillW = ctx.measureText(pillText).width + 68;
     const pillH = 52;
-    drawElevatedPanelPT(ctx, W / 2 - pillW / 2, y - pillH / 2, pillW, pillH, pillH / 2, '#059669', 'rgba(5,150,105,0.4)');
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(pillText, W / 2, y + 7);
-
-    // Table header row
-    const tableX = 60;
-    const tableW = W - 120;
-    y += 70;
-    const headerTop = y;
-    drawElevatedPanelPT(ctx, tableX, headerTop, tableW, tableHeaderH, 18, 'rgba(15,23,42,0.95)');
-
-    const teamColX = tableX + 96;
-    const pColX = tableX + tableW * 0.52;
-    const wColX = tableX + tableW * 0.62;
-    const lColX = tableX + tableW * 0.72;
-    const nrrColX = tableX + tableW * 0.84;
-    const ptsColX = tableX + tableW - 36;
-
-    ctx.font = '900 18px sans-serif';
-    ctx.fillStyle = '#94a3b8';
-    ctx.textAlign = 'left';
-    ctx.fillText('TEAM', teamColX, headerTop + tableHeaderH / 2 + 6);
-    ctx.textAlign = 'center';
-    ctx.fillText('P', pColX, headerTop + tableHeaderH / 2 + 6);
-    ctx.fillText('W', wColX, headerTop + tableHeaderH / 2 + 6);
-    ctx.fillText('L', lColX, headerTop + tableHeaderH / 2 + 6);
-    ctx.fillText('NRR', nrrColX, headerTop + tableHeaderH / 2 + 6);
-    ctx.textAlign = 'right';
-    ctx.fillText('PTS', ptsColX, headerTop + tableHeaderH / 2 + 6);
-
-    let rowY = headerTop + tableHeaderH + 8;
-
-    pointsTable.forEach((row, idx) => {
-      const rankColors = ['#f59e0b', '#cbd5e1', '#c2410c'];
-      const isTop3 = idx < 3;
-      const rankColor = isTop3 ? rankColors[idx] : '#334155';
-
-      const currentStatus = (selectedTournament.teamStatuses && selectedTournament.teamStatuses[row.teamId]) || 'none';
-      const statusCfg = STATUS_CONFIG[currentStatus] || STATUS_CONFIG['none'];
-
-      const bg = isTop3 ? rgbaPT(rankColors[idx], 0.08) : (idx % 2 === 0 ? 'rgba(15,23,42,0.75)' : 'rgba(15,23,42,0.5)');
-      drawElevatedPanelPT(ctx, tableX, rowY, tableW, rowH - 10, 16, bg, 'rgba(0,0,0,0.25)');
-
-      if (isTop3) {
-        ctx.fillStyle = rankColors[idx];
-        ctx.beginPath();
-        ctx.roundRect(tableX, rowY, 8, rowH - 10, [16, 0, 0, 16]);
-        ctx.fill();
-      }
-
-      const cy = rowY + (rowH - 10) / 2;
-
-      // Rank circle
-      ctx.beginPath();
-      ctx.fillStyle = isTop3 ? rankColor : 'rgba(255,255,255,0.08)';
-      ctx.arc(tableX + 46, cy, 24, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = isTop3 ? '#05070d' : '#94a3b8';
-      ctx.font = '900 22px sans-serif';
+    const pillWs = pills.map((p) => ctx.measureText(p.text).width + 64);
+    const pillGap = 18;
+    let px = W / 2 - (pillWs[0] + pillWs[1] + pillGap) / 2;
+    pills.forEach((p, i) => {
+      drawElevatedPanelPT(ctx, px, y - pillH / 2, pillWs[i], pillH, pillH / 2, p.fill, p.glow);
+      ctx.fillStyle = '#ffffff';
       ctx.textAlign = 'center';
-      ctx.fillText(String(idx + 1), tableX + 46, cy + 8);
-
-      // Team color dot + name
-      ctx.fillStyle = row.teamColor || '#10b981';
-      ctx.beginPath();
-      ctx.arc(teamColX - 14, cy, 8, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#f8fafc';
-      ctx.font = '800 26px sans-serif';
-      let displayName = row.teamName;
-      const maxNameW = tableW * 0.36;
-      while (ctx.measureText(displayName).width > maxNameW && displayName.length > 4) {
-        displayName = displayName.slice(0, -1);
-      }
-      if (displayName !== row.teamName) displayName = displayName.trim() + '…';
-      ctx.fillText(displayName, teamColX + 4, cy + 9);
-
-      if (currentStatus !== 'none') {
-        const nameW = ctx.measureText(displayName).width;
-        ctx.font = '900 15px sans-serif';
-        ctx.fillStyle = '#f59e0b';
-        ctx.fillText(statusCfg.badgeShort === '🏆 WINNER' ? '👑' : statusCfg.badgeShort, teamColX + 4 + nameW + 14, cy + 6);
-      }
-
-      ctx.textAlign = 'center';
-      ctx.font = '700 24px sans-serif';
-      ctx.fillStyle = '#cbd5e1';
-      ctx.fillText(String(row.played), pColX, cy + 8);
-      ctx.fillStyle = '#34d399';
-      ctx.fillText(String(row.won), wColX, cy + 8);
-      ctx.fillStyle = '#fb7185';
-      ctx.fillText(String(row.lost), lColX, cy + 8);
-
-      ctx.fillStyle = row.nrr >= 0 ? '#34d399' : '#fb7185';
-      ctx.font = '900 22px monospace';
-      ctx.fillText(row.nrr > 0 ? `+${row.nrr}` : String(row.nrr), nrrColX, cy + 8);
-
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = '900 30px sans-serif';
-      ctx.fillText(String(row.points), ptsColX, cy + 10);
-
-      rowY += rowH;
+      ctx.fillText(p.text, px + pillWs[i] / 2, y + 7);
+      px += pillWs[i] + pillGap;
     });
 
-    // Footer
-    const footerY = H - 96;
-    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    y = headerBlockH;
+
+    // ---- Champion banner ----
+    if (championRow) {
+      const bx = 56;
+      const bw = W - 112;
+      const bg = ctx.createLinearGradient(bx, 0, bx + bw, 0);
+      bg.addColorStop(0, 'rgba(245,158,11,0.30)');
+      bg.addColorStop(0.5, 'rgba(253,224,71,0.18)');
+      bg.addColorStop(1, 'rgba(245,158,11,0.30)');
+      drawElevatedPanelPT(ctx, bx, y, bw, bannerH - 26, 28, bg as any, 'rgba(245,158,11,0.4)');
+      ctx.strokeStyle = 'rgba(251,191,36,0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.roundRect(bx, y, bw, bannerH - 26, 28); ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fde68a';
+      ctx.font = '900 24px sans-serif';
+      ctx.save();
+      ctx.letterSpacing = '8px';
+      ctx.fillText('CHAMPIONS', W / 2, y + 48);
+      ctx.restore();
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '900 54px sans-serif';
+      ctx.fillText(fit(`👑 ${championRow.teamName.toUpperCase()}`, bw - 80), W / 2, y + 112);
+      y += bannerH;
+    }
+
+    // ---- Tables (one per group, or one overall) ----
+    const tableX = 56;
+    const tableW = W - 112;
+    const rankColors = ['#f59e0b', '#cbd5e1', '#c2410c'];
+    const nameX = tableX + 170;
+    const pColX = tableX + tableW * 0.585;
+    const wColX = tableX + tableW * 0.66;
+    const lColX = tableX + tableW * 0.735;
+    const nrrColX = tableX + tableW * 0.825;
+    const ptsRight = tableX + tableW - 26;
+
+    groups.forEach((g) => {
+      if (g.label) {
+        drawElevatedPanelPT(ctx, tableX, y, tableW, groupHeadH - 14, 18, 'rgba(245,158,11,0.10)', 'rgba(0,0,0,0.3)');
+        ctx.fillStyle = '#f59e0b';
+        ctx.beginPath(); ctx.roundRect(tableX, y, 10, groupHeadH - 14, [18, 0, 0, 18]); ctx.fill();
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '900 32px sans-serif';
+        ctx.save();
+        ctx.letterSpacing = '4px';
+        ctx.fillText(g.label.toUpperCase(), tableX + 34, y + 42);
+        ctx.restore();
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '800 20px sans-serif';
+        ctx.fillText(`${g.rows.length} TEAMS`, tableX + tableW - 28, y + 40);
+        y += groupHeadH;
+      }
+
+      // Column header
+      const hy = y + colHeadH / 2 + 7;
+      ctx.font = '900 18px sans-serif';
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'left';
+      ctx.fillText('TEAM', nameX, hy);
+      ctx.textAlign = 'center';
+      ctx.fillText('P', pColX, hy);
+      ctx.fillText('W', wColX, hy);
+      ctx.fillText('L', lColX, hy);
+      ctx.fillText('NRR', nrrColX, hy);
+      ctx.textAlign = 'right';
+      ctx.fillText('PTS', ptsRight, hy);
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(tableX, y + colHeadH - 4); ctx.lineTo(tableX + tableW, y + colHeadH - 4); ctx.stroke();
+      y += colHeadH;
+
+      g.rows.forEach((row, idx) => {
+        const st = statuses[row.teamId] || 'none';
+        const cfg = STATUS_CONFIG[st] || STATUS_CONFIG['none'];
+        const isTop3 = idx < 3;
+        const isChamp = st === 'champion';
+        const isOut = st === 'eliminated';
+        const rh = rowH - 12;
+        const cy = y + rh / 2;
+
+        ctx.save();
+        if (isOut) ctx.globalAlpha = 0.6;
+
+        const bgFill = isChamp
+          ? 'rgba(245,158,11,0.16)'
+          : isTop3
+          ? rgbaPT(rankColors[idx], 0.09)
+          : idx % 2 === 0
+          ? 'rgba(15,23,42,0.80)'
+          : 'rgba(15,23,42,0.55)';
+        drawElevatedPanelPT(ctx, tableX, y, tableW, rh, 20, bgFill, 'rgba(0,0,0,0.3)');
+        if (isChamp) {
+          ctx.strokeStyle = 'rgba(251,191,36,0.8)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.roundRect(tableX, y, tableW, rh, 20); ctx.stroke();
+        }
+        // team colour stripe on the left edge
+        ctx.fillStyle = row.teamColor || '#10b981';
+        ctx.beginPath(); ctx.roundRect(tableX, y, 9, rh, [20, 0, 0, 20]); ctx.fill();
+
+        // rank medal
+        ctx.beginPath();
+        ctx.fillStyle = isTop3 ? rankColors[idx] : 'rgba(255,255,255,0.08)';
+        ctx.arc(tableX + 52, cy, 25, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = isTop3 ? '#05070d' : '#94a3b8';
+        ctx.font = '900 24px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(idx + 1), tableX + 52, cy + 9);
+
+        // team badge (initials on team colour)
+        const bx = tableX + 118;
+        const bgd = ctx.createLinearGradient(bx - 30, cy - 30, bx + 30, cy + 30);
+        bgd.addColorStop(0, rgbaPT(row.teamColor || '#10b981', 1));
+        bgd.addColorStop(1, rgbaPT(row.teamColor || '#10b981', 0.55));
+        ctx.save();
+        ctx.shadowColor = rgbaPT(row.teamColor || '#10b981', 0.55);
+        ctx.shadowBlur = 16;
+        ctx.fillStyle = bgd;
+        ctx.beginPath(); ctx.arc(bx, cy, 30, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(bx, cy, 30, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = '#05070d';
+        ctx.font = '900 20px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText((row.teamShortName || row.teamName).slice(0, 3).toUpperCase(), bx, cy + 7);
+
+        // team name
+        const maxNameW = pColX - 40 - nameX;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#f8fafc';
+        let nameSize = 29;
+        ctx.font = `900 ${nameSize}px sans-serif`;
+        while (ctx.measureText(row.teamName).width > maxNameW && nameSize > 21) {
+          nameSize -= 1;
+          ctx.font = `900 ${nameSize}px sans-serif`;
+        }
+        ctx.fillText(fit(row.teamName, maxNameW), nameX, cy - 8);
+
+        // second line: status chip + last 5 results
+        let sx = nameX;
+        const sy = cy + 16;
+        if (st !== 'none' && cfg.posterLabel) {
+          ctx.font = '900 14px sans-serif';
+          const chipW = ctx.measureText(cfg.posterLabel).width + 26;
+          ctx.fillStyle = rgbaPT(cfg.posterColor, 0.2);
+          ctx.beginPath(); ctx.roundRect(sx, sy - 14, chipW, 26, 13); ctx.fill();
+          ctx.strokeStyle = rgbaPT(cfg.posterColor, 0.75);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.roundRect(sx, sy - 14, chipW, 26, 13); ctx.stroke();
+          ctx.fillStyle = cfg.posterColor;
+          ctx.textAlign = 'center';
+          ctx.fillText(cfg.posterLabel, sx + chipW / 2, sy + 5);
+          sx += chipW + 12;
+        }
+        const form = row.form.slice(0, 5).slice().reverse();
+        form.forEach((f, i) => {
+          const fx = sx + i * 30;
+          ctx.fillStyle = f === 'W' ? '#059669' : f === 'L' ? '#e11d48' : '#d97706';
+          ctx.beginPath(); ctx.roundRect(fx, sy - 13, 25, 25, 7); ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '900 14px sans-serif';
+          ctx.textAlign = 'center';
+          ctx.fillText(f, fx + 12.5, sy + 5);
+        });
+
+        // numbers
+        ctx.textAlign = 'center';
+        ctx.font = '800 27px sans-serif';
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(String(row.played), pColX, cy + 9);
+        ctx.fillStyle = '#34d399';
+        ctx.fillText(String(row.won), wColX, cy + 9);
+        ctx.fillStyle = '#fb7185';
+        ctx.fillText(String(row.lost), lColX, cy + 9);
+        ctx.fillStyle = row.nrr >= 0 ? '#34d399' : '#fb7185';
+        ctx.font = '900 22px monospace';
+        ctx.fillText((row.nrr > 0 ? '+' : '') + row.nrr.toFixed(3), nrrColX, cy + 8);
+
+        // points pill
+        const ptsW = 82;
+        ctx.fillStyle = 'rgba(245,158,11,0.14)';
+        ctx.beginPath(); ctx.roundRect(ptsRight - ptsW + 4, cy - 29, ptsW, 58, 16); ctx.fill();
+        ctx.strokeStyle = 'rgba(245,158,11,0.45)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.roundRect(ptsRight - ptsW + 4, cy - 29, ptsW, 58, 16); ctx.stroke();
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = '900 36px sans-serif';
+        ctx.fillText(String(row.points), ptsRight - ptsW / 2 + 4, cy + 13);
+
+        ctx.restore();
+        y += rowH;
+      });
+      y += groupGap;
+    });
+
+    // ---- Footer ----
+    const footerY = H - 100;
+    ctx.strokeStyle = 'rgba(245,158,11,0.35)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.moveTo(W / 2 - 200, footerY - 34);
-    ctx.lineTo(W / 2 + 200, footerY - 34);
+    ctx.moveTo(W / 2 - 240, footerY - 40);
+    ctx.lineTo(W / 2 + 240, footerY - 40);
     ctx.stroke();
 
-    ctx.font = '900 26px sans-serif';
+    ctx.font = '900 28px sans-serif';
     const igText = '@amritsarrooftopcricket';
-    const igIconSize = 30;
+    const igIconSize = 32;
     const igGap = 12;
     const igTextW = ctx.measureText(igText).width;
-    const igTotalW = igIconSize + igGap + igTextW;
-    const igStartX = W / 2 - igTotalW / 2;
+    const igStartX = W / 2 - (igIconSize + igGap + igTextW) / 2;
     drawInstagramIconPT(ctx, igStartX, footerY - igIconSize / 2 - 2, igIconSize, '#f8fafc');
     ctx.textAlign = 'left';
     ctx.fillStyle = '#f8fafc';
-    ctx.fillText(igText, igStartX + igIconSize + igGap, footerY + 9);
+    ctx.fillText(igText, igStartX + igIconSize + igGap, footerY + 10);
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#475569';
+    ctx.fillStyle = '#64748b';
     ctx.font = '700 18px sans-serif';
-    ctx.fillText('ARCL ROOFTOP LEAGUE • OFFICIAL POINTS TABLE', W / 2, footerY + 44);
+    const upd = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }).toUpperCase();
+    ctx.fillText(`ARCL ROOFTOP LEAGUE  •  OFFICIAL POINTS TABLE  •  UPDATED ${upd}`, W / 2, footerY + 48);
 
     return canvas;
   };
@@ -870,7 +1112,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     <div className="space-y-6 animate-in fade-in duration-200">
       {!openTournamentId && (<>
       {/* Broadcast Header Hub */}
-      <div className="p-5 sm:p-7 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+      <div className="p-4 sm:p-6 rounded-3xl border border-slate-800 bg-gradient-to-r from-slate-900 via-slate-900 to-slate-950 shadow-xl flex flex-row items-center justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <span className="flex h-2.5 w-2.5 relative">
@@ -889,9 +1131,6 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             Tournaments & Standings
           </h2>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-xl">
-            Live points tables, net run rates (NRR), MVP awards, and complete rooftop tournament fixtures.
-          </p>
         </div>
 
         {loggedInPlayer && (
@@ -900,10 +1139,10 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
               onOpenCreateTournament();
               cricketAudio.playClick();
             }}
-            className="w-full lg:w-auto flex items-center justify-center gap-2 px-4 py-3 lg:py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-sm shadow-lg shadow-orange-500/20 transition cursor-pointer active:scale-95 shrink-0"
+            className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-slate-950 font-black text-xs sm:text-sm shadow-lg shadow-orange-500/20 transition cursor-pointer active:scale-95 shrink-0"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Create Tournament</span>
+            <span>Create</span>
           </button>
         )}
       </div>
@@ -954,19 +1193,30 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
         ) : (
           displayedTournaments.map((t) => {
             const tMatches = (allMatches || []).filter((m) => m && m.tournamentId === t.id);
-            const played = tMatches.filter((m) => m.status === 'completed').length;
+            const completed = tMatches.filter((m) => m.status === 'completed');
+            const played = completed.length;
             const liveNow = tMatches.filter((m) => m.status === 'live').length;
-            const statusLabel = liveNow > 0 ? 'LIVE' : t.status === 'completed' ? 'COMPLETED' : t.status === 'upcoming' ? 'UPCOMING' : 'ONGOING';
-            const statusCls =
-              liveNow > 0
-                ? 'bg-rose-500/15 text-rose-400 border-rose-500/30'
-                : t.status === 'completed'
-                ? 'bg-slate-700/40 text-slate-300 border-slate-600/50'
-                : t.status === 'upcoming'
-                ? 'bg-sky-500/15 text-sky-300 border-sky-500/30'
-                : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+            const progressPct = tMatches.length > 0 ? Math.min(100, (played / tMatches.length) * 100) : 0;
+
+            // Leader (league points: win 2, tie 1)
+            const pts: { [id: string]: { name: string; points: number; wins: number } } = {};
+            completed.forEach((m) => {
+              if (!m.result) return;
+              [m.teamA, m.teamB].forEach((tm) => {
+                if (tm?.id && !pts[tm.id]) pts[tm.id] = { name: tm.name, points: 0, wins: 0 };
+              });
+              if (m.result.isTie) {
+                [m.teamA?.id, m.teamB?.id].forEach((id) => { if (id && pts[id]) pts[id].points += 1; });
+              } else if (m.result.winnerTeamId && pts[m.result.winnerTeamId]) {
+                pts[m.result.winnerTeamId].points += 2;
+                pts[m.result.winnerTeamId].wins += 1;
+              }
+            });
+            const leader = Object.values(pts).sort((x, y) => y.points - x.points || y.wins - x.wins)[0];
+            const championTeam = (teams || []).find((tm) => tm?.id && t.teamStatuses?.[tm.id] === 'champion');
+
             return (
-              <button
+              <div
                 key={t.id}
                 onClick={() => {
                   setSelectedTourId(t.id);
@@ -974,28 +1224,71 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   setStatsTab('points');
                   cricketAudio.playClick();
                 }}
-                className="w-full text-left flex items-center gap-3 p-3 rounded-2xl border border-slate-800 bg-slate-900 hover:border-amber-500/40 hover:bg-slate-900/80 transition cursor-pointer active:scale-[0.99]"
+                className="rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 shadow-lg hover:border-amber-400/60 transition cursor-pointer active:scale-[0.99] overflow-hidden"
               >
-                <div className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 overflow-hidden">
-                  {t.bannerImage ? (
-                    <img src={t.bannerImage} alt="" className="w-full h-full object-cover" />
+                <div className="p-4 space-y-3">
+                  {liveNow > 0 && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-500 text-white animate-pulse">
+                      ● {liveNow} LIVE
+                    </span>
+                  )}
+
+                  <div className="flex items-start gap-3">
+                    <div className="w-11 h-11 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0 overflow-hidden">
+                      {t.bannerImage ? (
+                        <img src={t.bannerImage} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Trophy className="w-5 h-5" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-lg font-black text-amber-400 leading-snug break-words">{t.name}</h3>
+                      <div className="text-[12px] text-slate-400 flex items-center gap-1 mt-0.5 break-words">
+                        <MapPin className="w-3 h-3 text-emerald-400 shrink-0" />
+                        <span>{t.location}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {championTeam ? (
+                    <div className="text-xs font-black text-amber-300">👑 Champion: {championTeam.name}</div>
+                  ) : leader ? (
+                    <div className="text-xs font-bold text-emerald-400">🥇 {leader.name} leading • {leader.points} pts</div>
                   ) : (
-                    <Trophy className="w-5 h-5" />
+                    <div className="text-xs font-bold text-slate-500">Matches yet to start</div>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      { label: 'Teams', value: (t.teams || []).length },
+                      { label: 'Played', value: played },
+                      { label: 'Total Matches', value: tMatches.length },
+                    ].map((x) => (
+                      <div key={x.label} className="rounded-xl bg-slate-950/70 border border-slate-800 py-2 text-center">
+                        <div className="text-base font-black text-white leading-none">{x.value}</div>
+                        <div className="text-[10px] text-slate-500 font-bold mt-1 uppercase tracking-wide">{x.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {tMatches.length > 0 && (
+                    <div className="h-1.5 rounded-full overflow-hidden bg-slate-800">
+                      <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-500" style={{ width: `${progressPct}%` }} />
+                    </div>
                   )}
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="font-black text-sm text-white truncate">{t.name}</span>
-                    <span className={`px-1.5 py-0.5 rounded-md border text-[9px] font-black tracking-wide shrink-0 ${statusCls}`}>
-                      {statusLabel}
-                    </span>
-                  </div>
-                  <div className="text-[11px] text-slate-400 truncate mt-0.5">
-                    {[t.season, t.location, `${(t.teams || []).length} teams`, `${played} played`].filter(Boolean).join(' • ')}
-                  </div>
+
+                <div className="px-4 py-3 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between gap-3">
+                  <span className="text-[11px] text-slate-500 font-mono truncate">
+                    {t.creatorName ? `By ${t.creatorName}` : t.tournamentId || ''}
+                  </span>
+                  <span className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs flex items-center gap-1.5 shadow-md shrink-0">
+                    <Trophy className="w-3.5 h-3.5" />
+                    <span>Open Tournament</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </span>
                 </div>
-                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
-              </button>
+              </div>
             );
           })
         )}
@@ -1169,6 +1462,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 Phone: Team, P, W, L, NRR, PTS (big text). Tap the arrow on a row to see Status / Ties / Form.
                 Large screens (lg+): full table with every column. */}
             {statsTab === 'points' && (
+              <div className="space-y-5">
+              {pointsGroups.map((grp) => (
+              <div key={grp.label || 'all'}>
+                {grp.label && (
+                  <div className="px-4 py-2 bg-slate-950/80 border-y border-slate-800 flex items-center gap-2">
+                    <span className="w-1.5 h-4 rounded-full bg-amber-400" />
+                    <span className="text-xs font-black uppercase tracking-wider text-amber-300">{grp.label}</span>
+                  </div>
+                )}
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm lg:text-xs font-mono">
                   <thead className="bg-slate-950 text-slate-400 uppercase text-[11px] lg:text-[10px] font-sans border-b border-slate-800">
@@ -1185,9 +1487,9 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
-                    {pointsTable.map((row, idx) => {
+                    {grp.rows.map((row, idx) => {
                       const matchedTeam = (teams || []).find((t) => t && (t.id === row?.teamId || t.name?.toLowerCase() === row?.teamName?.toLowerCase()));
-                      const currentStatus: TeamTournamentStatus =
+                      const currentStatus: StatusKey =
                         (selectedTournament?.teamStatuses && row?.teamId && selectedTournament.teamStatuses[row.teamId]) || 'none';
                       const statusInfo = STATUS_CONFIG[currentStatus] || STATUS_CONFIG['none'];
                       const isExpanded = expandedTeamId === row.teamId;
@@ -1374,6 +1676,9 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                   </tbody>
                 </table>
               </div>
+              </div>
+              ))}
+              </div>
             )}
 
             {statsTab === 'mvp' && (
@@ -1544,7 +1849,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 {(selectedTournament.teams || []).map((tId) => {
                   const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
                   if (!teamObj?.id) return null;
-                  const currentStatus: TeamTournamentStatus =
+                  const currentStatus: StatusKey =
                     (selectedTournament.teamStatuses && selectedTournament.teamStatuses[teamObj.id]) || 'none';
                   const activeConfig = STATUS_CONFIG[currentStatus] || STATUS_CONFIG['none'];
 
@@ -1555,10 +1860,11 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                         <span className="font-bold text-sm text-white truncate">{teamObj.name}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
-                        {(['qualified', 'semi_final', 'final', 'champion', 'eliminated'] as TeamTournamentStatus[]).map((st) => (
+                      <div className="flex items-center justify-end flex-wrap gap-1 shrink-0 max-w-[60%]">
+                        {STATUS_ORDER.filter((k) => k !== 'none').map((st) => (
                           <button
                             key={st}
+                            title={STATUS_CONFIG[st].label}
                             onClick={() => handleUpdateTeamStatus(teamObj.id, currentStatus === st ? 'none' : st)}
                             className={`px-2 py-1 rounded text-[11px] font-black transition cursor-pointer ${
                               currentStatus === st
@@ -1767,6 +2073,35 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 </div>
               </div>
 
+              {(selectedTournament?.teams || []).length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Groups <span className="text-[10px] text-slate-500 font-normal">(optional, separate points table per group)</span>
+                  </label>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {(selectedTournament?.teams || []).map((tId) => {
+                      const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
+                      if (!teamObj) return null;
+                      return (
+                        <div key={teamObj.id} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                          <span className="truncate text-xs text-slate-200 font-bold">{teamObj.name}</span>
+                          <select
+                            value={editGroups[teamObj.id] || ''}
+                            onChange={(e) => setEditGroups((prev) => ({ ...prev, [teamObj.id]: e.target.value }))}
+                            className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-bold cursor-pointer"
+                          >
+                            <option value="">No group</option>
+                            {['A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
+                              <option key={g} value={g}>Group {g}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
                 <button
                   type="button"
@@ -1804,7 +2139,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              {(['none', 'qualified', 'semi_final', 'final', 'champion', 'eliminated'] as TeamTournamentStatus[]).map((statusKey) => {
+              {STATUS_ORDER.map((statusKey) => {
                 const cfg = STATUS_CONFIG[statusKey];
                 const isCurrent = (selectedTournament.teamStatuses?.[selectedTeamForStatusModal.id] || 'none') === statusKey;
 
@@ -1843,10 +2178,4 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           team={inspectedTeam}
           allTeams={teams}
           allMatches={allMatches}
-          onOpenScorecard={onOpenScorecard}
-          isDarkMode={true}
-        />
-      )}
-    </div>
-  );
-};
+          onOpenScorecard={onOpenS
