@@ -30,11 +30,17 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
   const [format, setFormat] = useState<'Round Robin + Knockout' | 'League' | 'Knockout'>('Round Robin + Knockout');
   const [bannerImage, setBannerImage] = useState<string>('');
   const [selectedTeamIds, setSelectedTeamIds] = useState<string[]>([]);
+  // Optional groups inside one tournament (Group A / B / C ...). 0 = no groups.
+  const GROUP_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const [groupCount, setGroupCount] = useState<number>(0);
+  const [teamGroups, setTeamGroups] = useState<{ [teamId: string]: string }>({});
 
   // Initialize selected teams & tournament ID on open
   useEffect(() => {
     if (isOpen) {
       setSelectedTeamIds(teams.map((t) => t.id));
+      setGroupCount(0);
+      setTeamGroups({});
       setTournamentId(getNextSequentialTournamentId(existingTournaments));
     }
   }, [isOpen, teams, existingTournaments]);
@@ -126,6 +132,11 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
         return;
       }
       setSelectedTeamIds(selectedTeamIds.filter((id) => id !== teamId));
+      setTeamGroups((prev) => {
+        const next = { ...prev };
+        delete next[teamId];
+        return next;
+      });
     } else {
       setSelectedTeamIds([...selectedTeamIds, teamId]);
     }
@@ -134,6 +145,17 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
   const selectAllTeams = () => {
     cricketAudio.playClick();
     setSelectedTeamIds(teams.map((t) => t.id));
+  };
+
+  // Splits the selected teams into the chosen number of groups, in order.
+  const autoSplitGroups = (count: number) => {
+    const ids = selectedTeamIds;
+    const size = Math.ceil(ids.length / count);
+    const next: { [teamId: string]: string } = {};
+    ids.forEach((id, i) => {
+      next[id] = GROUP_LETTERS[Math.min(count - 1, Math.floor(i / size))];
+    });
+    setTeamGroups(next);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -150,9 +172,20 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
       return;
     }
 
+    if (groupCount > 0 && selectedTeamIds.some((id) => !teamGroups[id])) {
+      alert('Please choose a group for every team (or switch groups Off).');
+      return;
+    }
+
     cricketAudio.playClick();
     const cleanTourId = tournamentId.trim().toUpperCase() || getNextSequentialTournamentId(existingTournaments);
-    const newTour: Tournament = {
+    const cleanGroups: { [teamId: string]: string } = {};
+    if (groupCount > 0) {
+      selectedTeamIds.forEach((id) => {
+        if (teamGroups[id]) cleanGroups[id] = teamGroups[id];
+      });
+    }
+    const newTour = {
       id: `tour-${Date.now()}`,
       tournamentId: cleanTourId,
       name: name.trim(),
@@ -169,7 +202,8 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
       creatorId: loggedInPlayer?.id,
       creatorProfileId: loggedInPlayer?.profileId,
       creatorName: loggedInPlayer?.name,
-    };
+      ...(groupCount > 0 ? { teamGroups: cleanGroups } : {}),
+    } as Tournament;
 
     onCreateTournament(newTour);
     onClose();
@@ -447,6 +481,70 @@ export const CreateTournamentModal: React.FC<CreateTournamentModalProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Groups (optional): Group A / B / C inside this one tournament */}
+            {teams.length > 0 && (
+              <div>
+                <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+                  <label className="text-slate-400 font-bold flex items-center gap-2">
+                    <span>Groups</span>
+                    <span className="text-[10px] text-slate-500 font-normal">optional, separate points table for each group</span>
+                  </label>
+                  <div className="flex items-center gap-1">
+                    {[0, 2, 3, 4, 5, 6].map((n) => (
+                      <button
+                        type="button"
+                        key={n}
+                        onClick={() => {
+                          cricketAudio.playClick();
+                          setGroupCount(n);
+                          if (n === 0) setTeamGroups({});
+                          else autoSplitGroups(n);
+                        }}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black cursor-pointer transition ${
+                          groupCount === n
+                            ? 'bg-amber-500 text-slate-950 shadow-sm'
+                            : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {n === 0 ? 'Off' : `${n} Groups`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {groupCount > 0 && (
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    {teams
+                      .filter((t) => selectedTeamIds.includes(t.id))
+                      .map((t) => (
+                        <div
+                          key={t.id}
+                          className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800"
+                        >
+                          <span className="truncate text-xs text-slate-200 font-bold">{t.name}</span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {GROUP_LETTERS.slice(0, groupCount).map((g) => (
+                              <button
+                                type="button"
+                                key={g}
+                                onClick={() => setTeamGroups((prev) => ({ ...prev, [t.id]: g }))}
+                                className={`w-7 h-7 rounded-lg text-[11px] font-black cursor-pointer transition ${
+                                  teamGroups[t.id] === g
+                                    ? 'bg-amber-500 text-slate-950'
+                                    : 'bg-slate-900 border border-slate-700 text-slate-400 hover:text-white'
+                                }`}
+                              >
+                                {g}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Fixed Bottom Action Bar */}
