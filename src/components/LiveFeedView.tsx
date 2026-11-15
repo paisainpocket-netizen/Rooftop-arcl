@@ -22,6 +22,7 @@ interface LiveFeedViewProps {
   onOpenLoginModal?: () => void;
   onSelectTournamentTab?: () => void;
   onOpenTournaments?: () => void;
+  onOpenTournament?: (tournamentId: string) => void;
   onSelectMatchesTab?: () => void;
   onDeleteMatch?: (matchId: string) => void;
   isDarkMode?: boolean;
@@ -98,6 +99,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   onOpenLoginModal = () => {},
   onSelectTournamentTab,
   onOpenTournaments,
+  onOpenTournament,
   onSelectMatchesTab = () => {},
   onDeleteMatch,
   isDarkMode = true,
@@ -606,75 +608,52 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
               <div
                 key={tour.id}
                 onClick={() => {
-                  handleTournaments();
+                  if (onOpenTournament) onOpenTournament(tour.id);
+                  else handleTournaments();
                   cricketAudio.playClick();
                 }}
-                className={`p-4 rounded-3xl border shadow-lg hover:border-amber-500/40 cursor-pointer transition ${
+                className={`flex items-center gap-3 p-3 rounded-2xl border shadow-md hover:border-amber-500/40 cursor-pointer transition active:scale-[0.99] ${
                   isDarkMode ? 'border-slate-800 bg-slate-900/90 text-white' : 'border-slate-200 bg-white text-slate-900'
                 }`}
               >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="w-9 h-9 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg font-black shrink-0">
-                    🏆
-                  </div>
-                  <div className="flex items-center gap-1.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 text-lg shrink-0">
+                  🏆
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-sm tracking-tight truncate">{tour.name}</h3>
                     {liveTourMatches.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-rose-500 text-white animate-pulse">
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase bg-rose-500 text-white animate-pulse shrink-0">
                         {liveTourMatches.length} Live
                       </span>
                     )}
                     {champion && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1">
-                        <span>👑</span>
-                        <span className="truncate max-w-[70px]">{champion.name}</span>
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0 truncate max-w-[110px]">
+                        👑 {champion.name}
                       </span>
                     )}
                     {!hasStarted && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-slate-700/60 text-slate-300 border border-slate-600/60">
+                      <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase bg-slate-700/60 text-slate-300 border border-slate-600/60 shrink-0">
                         Starting Soon
                       </span>
                     )}
                   </div>
-                </div>
-
-                <div className="mt-2.5">
-                  <h3 className="font-black text-sm tracking-tight truncate">
-                    {tour.name}
-                  </h3>
-                  <p className="text-xs text-amber-400 font-bold">
-                    {tour.trophyName}
-                  </p>
-                  <p className={`text-[11px] mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
-                    {tour.location} • {tour.season}
-                  </p>
-                  {leader && (
-                    <p className="text-[11px] font-bold text-emerald-400 mt-1 flex items-center gap-1 truncate">
-                      <span>🥇</span>
-                      <span className="truncate">{leader.name} leading</span>
-                    </p>
-                  )}
-                </div>
-
-                {hasStarted && (
-                  <div className="mt-2.5">
-                    <div className={`h-1.5 rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
+                  <div className={`text-[11px] mt-0.5 truncate ${isDarkMode ? 'text-slate-400' : 'text-slate-500'}`}>
+                    {tour.teams.length} Teams • {completedTourMatches.length} Played
+                    {leader ? ` • 🥇 ${leader.name} leading` : ''}
+                  </div>
+                  {hasStarted && (
+                    <div className={`mt-1.5 h-1 rounded-full overflow-hidden ${isDarkMode ? 'bg-slate-800' : 'bg-slate-200'}`}>
                       <div
                         className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-amber-500"
                         style={{ width: `${progressPct}%` }}
                       />
                     </div>
-                  </div>
-                )}
-
-                <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
-                  isDarkMode ? 'border-slate-800/60 text-slate-400' : 'border-slate-200 text-slate-500'
-                }`}>
-                  <span className="font-bold">{tour.teams.length} Teams</span>
-                  <span>{completedTourMatches.length} Played</span>
-                  <span className="text-emerald-400 font-black flex items-center gap-0.5">
-                    Table <ChevronRight className="w-3 h-3" />
-                  </span>
+                  )}
                 </div>
+
+                <ChevronRight className="w-4 h-4 text-slate-500 shrink-0" />
               </div>
             );
           })}
