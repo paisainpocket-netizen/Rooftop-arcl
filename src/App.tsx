@@ -32,7 +32,7 @@ import { MatchSettingsModal } from './components/MatchSettingsModal';
 import { PlayerAccountModal } from './components/PlayerAccountModal';
 import { PlayerProfileModal } from './components/PlayerProfileModal';
 import { ShareMatchCard } from './components/ShareMatchCard';
-import { Play, Trophy, Users, User, Shield, Sparkles, HelpCircle, AlertTriangle, X } from 'lucide-react';
+import { Play, Trophy, Users, User, Shield, Sparkles, Medal, HelpCircle, AlertTriangle, X } from 'lucide-react';
 import { cricketAudio } from './utils/audio';
 import { cloudDb, getDeviceId, isFirestoreQuotaExceeded, onQuotaStateChange, onSyncErrorChange, getLastSyncError, clearSyncError, SyncErrorInfo } from './lib/firebase';
 import { applyMatchStatsToPlayers, recalculateCareerStats, emptyPlayerStats } from './utils/careerStats';
@@ -1300,6 +1300,10 @@ export default function App() {
               onOpenScoring={(m) => openMatchForScoring(m)}
               onNewMatch={() => setIsCreateMatchOpen(true)}
               onOpenTournaments={() => setActiveTab('tournaments')}
+              onOpenTournament={(tournamentId) => {
+                setViewTournamentId(tournamentId);
+                setActiveTab('tournaments');
+              }}
               onOpenLoginModal={() => setIsLoginModalOpen(true)}
               isDarkMode={isDarkMode}
             />
@@ -1475,7 +1479,7 @@ export default function App() {
             { id: 'matches', label: 'Matches', icon: Trophy },
             { id: 'teams', label: 'Teams', icon: Shield },
             { id: 'players', label: 'Players', icon: User },
-            { id: 'tournaments', label: 'Points', icon: Sparkles },
+            { id: 'tournaments', label: 'Tournaments', icon: Medal },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
             return (
