@@ -2178,4 +2178,12 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           team={inspectedTeam}
           allTeams={teams}
           allMatches={allMatches}
+          corecard}
+        />
+      )}
+    </div>
+  );
+};
+
+  
           onOpenScorecard={onOpenS
