@@ -81,6 +81,16 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
       .filter((name): name is string => Boolean(name));
   };
 
+  const getSquadPlayers = (squadIds: string[] | undefined, teamPlayers: typeof match.teamA.players) => {
+    const all = teamPlayers || [];
+    if (!squadIds || squadIds.length === 0) return all;
+    return squadIds
+      .map((id) => all.find((p) => p.id === id))
+      .filter((p): p is (typeof all)[number] => Boolean(p));
+  };
+
+  const squadAPlayers = getSquadPlayers(match.playingSquadA, match.teamA.players);
+  const squadBPlayers = getSquadPlayers(match.playingSquadB, match.teamB.players);
   const squadANames = getSquadNames(match.playingSquadA, match.teamA.players);
   const squadBNames = getSquadNames(match.playingSquadB, match.teamB.players);
 
@@ -187,6 +197,13 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     ctx.stroke();
     ctx.restore();
 
+    // Soften the lower edge of the colour split so it blends into the dark base
+    const splitFade = ctx.createLinearGradient(0, 620, 0, 765);
+    splitFade.addColorStop(0, 'rgba(5,7,13,0)');
+    splitFade.addColorStop(1, 'rgba(5,7,13,1)');
+    ctx.fillStyle = splitFade;
+    ctx.fillRect(0, 620, W, 146);
+
     // Bottom fade
     const bf = ctx.createLinearGradient(0, H - 300, 0, H);
     bf.addColorStop(0, 'transparent');
@@ -273,9 +290,14 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     // Team names
     const nameY = by + badgeR + 80;
     const teamName = (cx: number, name: string, color: string) => {
-      ctx.font = '900 44px sans-serif';
+      let fs = 44;
+      ctx.font = `900 ${fs}px sans-serif`;
       let d = name.toUpperCase();
-      while (ctx.measureText(d).width > 400 && d.length > 4) d = d.slice(0, -1);
+      while (ctx.measureText(d).width > 430 && fs > 26) {
+        fs -= 2;
+        ctx.font = `900 ${fs}px sans-serif`;
+      }
+      while (ctx.measureText(d).width > 430 && d.length > 4) d = d.slice(0, -1);
       if (d !== name.toUpperCase()) d = d.trim() + '…';
       ctx.save();
       ctx.shadowColor = rgba(color, 0.7);
@@ -300,52 +322,146 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
     const when = formatFixtureDate(match.date);
     ctx.fillText(`${match.totalOvers} Overs • Rooftop Turf Rules${when ? '  |  ' + when : ''}`, W / 2, stripY);
 
-    // Squad panels
+    // Squad panels: team badge, captain line, numbered players with C / VC / WK tags
     const panelY = 830;
-    const panelH = 470;
-    const panelW = 464;
-    const gap = 32;
+    const panelH = fixturePanelH;
+    const panelW = 480;
+    const gap = 24;
     const leftX = W / 2 - gap / 2 - panelW;
     const rightX = W / 2 + gap / 2;
+    const fitText = (text: string, maxW: number): string => {
+      if (ctx.measureText(text).width <= maxW) return text;
+      let d = text;
+      while (d.length > 2 && ctx.measureText(d + '…').width > maxW) d = d.slice(0, -1);
+      return d.trim() + '…';
+    };
     [
-      { x: leftX, color: teamAColor, name: match.teamA.name, names: squadANames },
-      { x: rightX, color: teamBColor, name: match.teamB.name, names: squadBNames },
-    ].forEach(({ x, color, name, names }) => {
-      drawElevatedPanel(ctx, x, panelY, panelW, panelH, 26, 'rgba(15,23,42,0.92)');
-      ctx.strokeStyle = rgba(color, 0.8);
+      {
+        x: leftX, color: teamAColor, team: match.teamA, players: squadAPlayers,
+        cap: match.captainA, vc: match.viceCaptainA, wk: match.keeperA,
+      },
+      {
+        x: rightX, color: teamBColor, team: match.teamB, players: squadBPlayers,
+        cap: match.captainB, vc: match.viceCaptainB, wk: match.keeperB,
+      },
+    ].forEach(({ x, color, team, players, cap, vc, wk }) => {
+      drawElevatedPanel(ctx, x, panelY, panelW, panelH, 28, 'rgba(10,15,28,0.94)');
+
+      // soft team-colour wash at the top of the panel
+      const wash = ctx.createLinearGradient(x, panelY, x, panelY + 150);
+      wash.addColorStop(0, rgba(color, 0.32));
+      wash.addColorStop(1, 'transparent');
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, panelH, 28); ctx.clip();
+      ctx.fillStyle = wash;
+      ctx.fillRect(x, panelY, panelW, 150);
+      ctx.restore();
+
+      ctx.strokeStyle = rgba(color, 0.85);
       ctx.lineWidth = 3;
-      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, panelH, 26); ctx.stroke();
+      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, panelH, 28); ctx.stroke();
       ctx.fillStyle = color;
-      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, 8, [26, 26, 0, 0]); ctx.fill();
+      ctx.beginPath(); ctx.roundRect(x, panelY, panelW, 9, [28, 28, 0, 0]); ctx.fill();
 
+      // header: round badge + team name + count
+      const hbx = x + 62;
+      const hby = panelY + 74;
+      const hg = ctx.createLinearGradient(hbx - 34, hby - 34, hbx + 34, hby + 34);
+      hg.addColorStop(0, rgba(color, 1));
+      hg.addColorStop(1, rgba(color, 0.55));
+      ctx.save();
+      ctx.shadowColor = rgba(color, 0.6);
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = hg;
+      ctx.beginPath(); ctx.arc(hbx, hby, 34, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.arc(hbx, hby, 34, 0, Math.PI * 2); ctx.stroke();
       ctx.textAlign = 'center';
-      ctx.fillStyle = color;
-      ctx.font = '900 28px sans-serif';
-      ctx.fillText(name.toUpperCase().slice(0, 22), x + panelW / 2, panelY + 54);
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '700 17px sans-serif';
-      ctx.fillText(`${names.length} Player${names.length === 1 ? '' : 's'}`, x + panelW / 2, panelY + 80);
+      ctx.fillStyle = '#05070d';
+      ctx.font = '900 24px sans-serif';
+      ctx.fillText((team.shortName || team.name).slice(0, 3).toUpperCase(), hbx, hby + 8);
 
-      // Fit rows to the panel height so there is no empty space
-      const shown = names.slice(0, 13);
-      const top = panelY + 112;
-      const rowGap = Math.min(40, (panelH - 112 - 24) / Math.max(shown.length, 1));
       ctx.textAlign = 'left';
-      shown.forEach((n, i) => {
+      ctx.fillStyle = '#ffffff';
+      let hfs = 30;
+      ctx.font = `900 ${hfs}px sans-serif`;
+      while (ctx.measureText(team.name.toUpperCase()).width > panelW - 140 && hfs > 20) {
+        hfs -= 1;
+        ctx.font = `900 ${hfs}px sans-serif`;
+      }
+      ctx.fillText(fitText(team.name.toUpperCase(), panelW - 140), x + 112, hby - 4);
+      ctx.fillStyle = color;
+      ctx.font = '800 18px sans-serif';
+      ctx.save();
+      ctx.letterSpacing = '3px';
+      ctx.fillText(`PLAYING SQUAD  •  ${players.length}`, x + 112, hby + 26);
+      ctx.restore();
+
+      // captain strip
+      const capName = players.find((p) => p.id === cap)?.name;
+      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(x + 28, panelY + 138); ctx.lineTo(x + panelW - 28, panelY + 138); ctx.stroke();
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '700 20px sans-serif';
+      ctx.fillText(capName ? `Captain: ${fitText(capName, panelW - 200)}` : 'Captain: to be announced', x + panelW / 2, panelY + 166);
+
+      // player rows
+      const shown = players.slice(0, 16);
+      const top = panelY + 190;
+      shown.forEach((pl, i) => {
+        const ry = top + i * FIXTURE_ROW_H;
+        if (i % 2 === 0) {
+          ctx.fillStyle = 'rgba(255,255,255,0.035)';
+          ctx.beginPath(); ctx.roundRect(x + 16, ry - 4, panelW - 32, FIXTURE_ROW_H - 6, 14); ctx.fill();
+        }
+        // number disc
+        ctx.fillStyle = rgba(color, 0.22);
+        ctx.beginPath(); ctx.arc(x + 52, ry + 20, 18, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = color;
-        ctx.font = '900 21px sans-serif';
-        ctx.fillText(`${i + 1}.`, x + 32, top + i * rowGap + 16);
-        ctx.fillStyle = '#f1f5f9';
-        ctx.font = '700 22px sans-serif';
-        ctx.fillText(n, x + 74, top + i * rowGap + 16);
+        ctx.font = '900 19px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(String(i + 1), x + 52, ry + 27);
+
+        // tags (right aligned)
+        const tags: { t: string; c: string }[] = [];
+        if (pl.id === cap) tags.push({ t: 'C', c: '#f59e0b' });
+        if (pl.id === vc) tags.push({ t: 'VC', c: '#3b82f6' });
+        if (pl.id === wk) tags.push({ t: 'WK', c: '#06b6d4' });
+        let tx = x + panelW - 30;
+        ctx.font = '900 15px sans-serif';
+        tags.forEach((tg) => {
+          const tw = ctx.measureText(tg.t).width + 20;
+          tx -= tw;
+          ctx.fillStyle = tg.c;
+          ctx.beginPath(); ctx.roundRect(tx, ry + 6, tw, 28, 9); ctx.fill();
+          ctx.fillStyle = '#ffffff';
+          ctx.textAlign = 'center';
+          ctx.fillText(tg.t, tx + tw / 2, ry + 26);
+          tx -= 8;
+        });
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = pl.id === cap ? '#fde68a' : '#f1f5f9';
+        ctx.font = '800 24px sans-serif';
+        ctx.fillText(fitText(pl.name, tx - (x + 84)), x + 84, ry + 28);
       });
+      if (players.length > shown.length) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '700 18px sans-serif';
+        ctx.fillText(`+${players.length - shown.length} more`, x + panelW / 2, panelY + panelH - 14);
+      }
     });
 
     // Venue
     ctx.textAlign = 'center';
     ctx.fillStyle = '#94a3b8';
     ctx.font = '700 22px sans-serif';
-    ctx.fillText(`📍 ${match.venue || 'Rooftop Arena, Amritsar'}`, W / 2, H - 150);
+    ctx.fillText(`📍 ${match.venue || 'Rooftop Arena, Amritsar'}`, W / 2, H - 162);
 
     // Footer
     const footerY = H - 96;
@@ -373,9 +489,14 @@ export const ShareMatchCard: React.FC<ShareMatchCardProps> = ({ isOpen, onClose,
   // accents pulled from each team's own color, soft card shadows instead of
   // flat borders everywhere, a tighter type scale, and an Instagram handle
   // in the footer for branding.
+  const FIXTURE_ROW_H = 56;
+  const fixtureRows = Math.min(16, Math.max(11, squadAPlayers.length, squadBPlayers.length));
+  const fixturePanelH = 176 + fixtureRows * FIXTURE_ROW_H + 26;
+  const fixtureH = 830 + fixturePanelH + 230;
+
   const drawPosterCanvas = (): HTMLCanvasElement => {
     const W = 1080;
-    const H = 1500;
+    const H = isScheduled ? fixtureH : 1500;
     const canvas = document.createElement('canvas');
     canvas.width = W;
     canvas.height = H;
