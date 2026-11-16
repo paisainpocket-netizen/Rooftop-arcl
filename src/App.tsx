@@ -210,50 +210,6 @@ export default function App() {
     });
   }, [loggedInPlayer, allMatchesCombined]);
 
-  // Tournament table / leaderboard / MVP / caps must be built from ALL matches of a
-  // tournament, not only the recent ones kept live-synced. So when a screen that shows
-  // tournament numbers is open, the tournaments' matches are fetched once (and again at
-  // most every 2 minutes). Home only needs the ongoing tournaments; the Tournaments tab
-  // loads all of them.
-  const [tournamentFetchedMatches, setTournamentFetchedMatches] = useState<Match[]>([]);
-  const lastTournamentFetchRef = useRef<{ at: number; key: string }>({ at: 0, key: '' });
-  useEffect(() => {
-    const onTournamentsTab = activeTab === 'tournaments' || activeTab === 'teams';
-    const onHome = activeTab === 'live';
-    if (!onTournamentsTab && !onHome) return;
-    const wanted = (tournaments || [])
-      .filter((t) => onTournamentsTab || t.status === 'ongoing')
-      .map((t) => t.id);
-    if (wanted.length === 0) return;
-    const key = `${onTournamentsTab ? 'all' : 'home'}:${wanted.join(',')}`;
-    const last = lastTournamentFetchRef.current;
-    if (last.key === key && Date.now() - last.at < 120000) return;
-    lastTournamentFetchRef.current = { at: Date.now(), key };
-    let cancelled = false;
-    cloudDb.fetchMatchesByTournament(wanted).then((fetched) => {
-      if (cancelled || !fetched) return;
-      setTournamentFetchedMatches((prev) => {
-        const map = new Map<string, Match>();
-        prev.forEach((m) => map.set(m.id, m));
-        fetched.forEach((m) => map.set(m.id, m));
-        return Array.from(map.values());
-      });
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeTab, tournaments]);
-
-  // Every match known on this phone: recent + live + tournament matches. Used for
-  // tournament numbers, teams and player stats. (My Matches keeps its own paged list.)
-  const matchesWithTournaments = useMemo(() => {
-    const map = new Map<string, Match>();
-    tournamentFetchedMatches.forEach((m) => map.set(m.id, m));
-    allMatchesCombined.forEach((m) => map.set(m.id, m)); // live / recent copies are freshest
-    deletedMatchIdsRef.current.forEach((id) => map.delete(id));
-    return Array.from(map.values());
-  }, [tournamentFetchedMatches, allMatchesCombined]);
-
   // Is the logged-in person a scorer (creator / delegated / admin) of the open match?
   const isScorerOfCurrentMatch = useMemo(() => {
     if (!loggedInPlayer || !currentMatch) return false;
@@ -344,6 +300,74 @@ export default function App() {
     if (!inspectedPlayerId) return null;
     return players.find((p) => p.id === inspectedPlayerId) || null;
   }, [inspectedPlayerId, players]);
+
+  // Tournament table / leaderboard / MVP / caps / player history must be built from ALL
+  // matches of a tournament, not only the recent ones kept live-synced.
+  //  1) Instantly: whatever matches this phone already has saved (free, not counted by
+  //     Firebase) are used, so the numbers are right the moment a screen opens.
+  //  2) Then: a fresh read from the server (at most every 2 minutes) fixes anything new.
+  // Home needs only ongoing tournaments; Tournaments / Teams tabs and player profiles
+  // use all of them.
+  const [tournamentFetchedMatches, setTournamentFetchedMatches] = useState<Match[]>([]);
+  const lastTournamentFetchRef = useRef<{ at: number; key: string }>({ at: 0, key: '' });
+  const mergeFetchedTournamentMatches = (fetched: Match[]) => {
+    setTournamentFetchedMatches((prev) => {
+      const map = new Map<string, Match>();
+      prev.forEach((m) => map.set(m.id, m));
+      fetched.forEach((m) => {
+        const old = map.get(m.id);
+        if (!old || (m.updatedAt || 0) >= (old.updatedAt || 0)) map.set(m.id, m);
+      });
+      return Array.from(map.values());
+    });
+  };
+
+  // Step 1: saved copies, as soon as the tournaments are known (any screen)
+  useEffect(() => {
+    const ids = (tournaments || []).map((t) => t.id);
+    if (ids.length === 0) return;
+    let cancelled = false;
+    cloudDb.fetchMatchesByTournamentFromCache(ids).then((cached) => {
+      if (!cancelled && cached && cached.length > 0) mergeFetchedTournamentMatches(cached);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [tournaments]);
+
+  // Step 2: fresh read from the server
+  useEffect(() => {
+    const needAll =
+      activeTab === 'tournaments' || activeTab === 'teams' || !!inspectedPlayerId || isLoginModalOpen;
+    const onHome = activeTab === 'live';
+    if (!needAll && !onHome) return;
+    const wanted = (tournaments || [])
+      .filter((t) => needAll || t.status === 'ongoing')
+      .map((t) => t.id);
+    if (wanted.length === 0) return;
+    const key = `${needAll ? 'all' : 'home'}:${wanted.join(',')}`;
+    const last = lastTournamentFetchRef.current;
+    if (last.key === key && Date.now() - last.at < 120000) return;
+    lastTournamentFetchRef.current = { at: Date.now(), key };
+    let cancelled = false;
+    cloudDb.fetchMatchesByTournament(wanted).then((fetched) => {
+      if (cancelled || !fetched) return;
+      mergeFetchedTournamentMatches(fetched);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, tournaments, inspectedPlayerId, isLoginModalOpen]);
+
+  // Every match known on this phone: recent + live + tournament matches. Used for
+  // tournament numbers, teams and player stats. (My Matches keeps its own paged list.)
+  const matchesWithTournaments = useMemo(() => {
+    const map = new Map<string, Match>();
+    tournamentFetchedMatches.forEach((m) => map.set(m.id, m));
+    allMatchesCombined.forEach((m) => map.set(m.id, m)); // live / recent copies are freshest
+    deletedMatchIdsRef.current.forEach((id) => map.delete(id));
+    return Array.from(map.values());
+  }, [tournamentFetchedMatches, allMatchesCombined]);
 
   // Listen to Firestore Quota state
   useEffect(() => {
