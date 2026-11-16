@@ -25,6 +25,7 @@ import {
   getCountFromServer,
   getDocFromServer,
   getDocsFromServer,
+  getDocsFromCache,
   deleteField,
   arrayUnion,
   Firestore,
@@ -689,6 +690,29 @@ export const cloudDb = {
       return Array.from(out.values());
     } catch (error) {
       console.warn('fetchMatchesByTournament failed:', error);
+      return null;
+    }
+  },
+
+  /**
+   * Same as fetchMatchesByTournament, but reads ONLY what this phone has already saved
+   * (no network, not counted as Firebase reads). Gives correct numbers instantly; the
+   * server read then refreshes anything new. Returns null if nothing is saved yet.
+   */
+  async fetchMatchesByTournamentFromCache(tournamentIds: string[]): Promise<Match[] | null> {
+    const ids = Array.from(new Set((tournamentIds || []).filter(Boolean)));
+    if (ids.length === 0) return null;
+    try {
+      const out = new Map<string, Match>();
+      for (let i = 0; i < ids.length; i += 10) {
+        const chunk = ids.slice(i, i + 10);
+        const snap = await getDocsFromCache(
+          query(collection(db, COLLECTIONS.MATCHES), where('tournamentId', 'in', chunk))
+        );
+        snap.forEach((d) => out.set(d.id, d.data() as Match));
+      }
+      return Array.from(out.values());
+    } catch (error) {
       return null;
     }
   },
