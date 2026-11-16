@@ -1028,11 +1028,11 @@ export default function App() {
   // The app only keeps the recent matches in memory, so the full list is fetched from
   // the cloud first (and the freshest local copies win). If the cloud can't be reached
   // the stats are left untouched, instead of being rebuilt from a partial list.
-  const rebuildStatsFromAllCompleted = async (localMatches: Match[], excludeMatchId?: string) => {
+  const rebuildStatsFromAllCompleted = async (localMatches: Match[], excludeMatchId?: string): Promise<number> => {
     const cloudCompleted = await cloudDb.fetchAllCompletedMatches();
     if (!cloudCompleted) {
       alert('Players ke stats abhi update nahi ho paye (cloud se saare matches nahi mile). Match ka kaam ho gaya hai. Net theek hone par "Edit Completed Match" se ek baar save karke stats theek kar lena.');
-      return;
+      return 0;
     }
     const map = new Map<string, Match>();
     cloudCompleted.forEach((m) => map.set(m.id, m));
@@ -1054,6 +1054,13 @@ export default function App() {
       });
       return recalculated;
     });
+    return all.length;
+  };
+
+  // Admin button in the player profile: rebuild every player's totals from ALL completed
+  // matches (tournament, club, T10, T20, test - everything saved in the cloud).
+  const handleRebuildAllPlayerStats = async (): Promise<number> => {
+    return rebuildStatsFromAllCompleted(savedMatches.filter((m) => m.status === 'completed'));
   };
 
   const handleSaveMatchCorrections = (correctedMatch: Match) => {
@@ -1898,6 +1905,7 @@ export default function App() {
           onOpenLoginModal={() => setIsLoginModalOpen(true)}
           isAdmin={isAdmin}
           onResetPlayerFormatStats={handleResetPlayerFormatStats}
+          onRebuildAllStats={handleRebuildAllPlayerStats}
         />
       )}
 
