@@ -37,6 +37,9 @@ interface PlayerProfileModalProps {
   // format's numbers and without deleting any match.
   isAdmin?: boolean;
   onResetPlayerFormatStats?: (playerId: string, formatKey: 't10' | 't20' | 'club' | 'test') => void;
+  // Admin only: rebuild every player's totals from all completed matches. Resolves to the
+  // number of matches used (0 = could not reach the cloud, nothing changed).
+  onRebuildAllStats?: () => Promise<number>;
 }
 
 type MatchFormatKey = 'all' | 't10' | 't20' | 'club' | 'test';
@@ -120,12 +123,15 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   onOpenLoginModal,
   isAdmin,
   onResetPlayerFormatStats,
+  onRebuildAllStats,
 }) => {
   const [activeTab, setActiveTab] = useState<'statistics' | 'formats' | 'overview' | 'matches' | 'teams'>('statistics');
   const [statsSubTab, setStatsSubTab] = useState<'bat' | 'bowl' | 'field' | 'matchwise'>('bat');
   const [selectedFormat, setSelectedFormat] = useState<MatchFormatKey>('all');
   const [copiedId, setCopiedId] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false);
+  const [rebuildMsg, setRebuildMsg] = useState('');
 
   if (!isOpen) return null;
 
@@ -636,6 +642,36 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                       </div>
                     </div>
                   </SectionCard>
+
+                  {isAdmin && onRebuildAllStats && (
+                    <SectionCard title="Admin" hint="All players">
+                      <p className="text-[11px] text-slate-400 mb-2.5">
+                        If totals look lower than the matches played, this recalculates every player's career
+                        (Overall, T10, T20, Club, Test) from all completed matches saved in the cloud.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={rebuilding}
+                        onClick={async () => {
+                          if (!window.confirm('Sabhi players ke stats saare completed matches se dobara banenge. Karein?')) return;
+                          setRebuilding(true);
+                          setRebuildMsg('');
+                          try {
+                            const n = await onRebuildAllStats();
+                            setRebuildMsg(n > 0 ? `Done: ${n} matches se sabhi players ke stats dobara bane.` : 'Cloud se matches nahi mile, kuch change nahi hua.');
+                          } catch (e) {
+                            setRebuildMsg('Kuch gadbad hui, stats change nahi hue.');
+                          } finally {
+                            setRebuilding(false);
+                          }
+                        }}
+                        className="w-full py-2 rounded-xl bg-amber-600 hover:bg-amber-500 disabled:opacity-60 text-white font-bold text-xs cursor-pointer"
+                      >
+                        {rebuilding ? 'Rebuilding...' : 'Rebuild all player stats'}
+                      </button>
+                      {rebuildMsg && <p className="text-[11px] text-emerald-400 mt-2">{rebuildMsg}</p>}
+                    </SectionCard>
+                  )}
 
                   <SectionCard title="Player ID">
                     <div className="flex items-center justify-between text-xs font-mono bg-slate-950 p-2.5 rounded-xl border border-slate-800">
