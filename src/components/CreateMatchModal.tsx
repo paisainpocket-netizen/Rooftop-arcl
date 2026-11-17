@@ -132,6 +132,23 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
     color: '#334155',
     players: [],
   };
+  // When a tournament is chosen, the team dropdowns list that tournament's teams
+  // (not just the teams this user created). Without a tournament, the old list is used.
+  const dropdownTeams: Team[] = (() => {
+    const tour = tournaments.find((tt) => tt.id === selectedTournamentId);
+    if (!tour || !tour.teams || tour.teams.length === 0) return teams;
+    const list = tour.teams
+      .map((id) => teamLookupPool.find((t) => t.id === id || t.teamId === id))
+      .filter((t): t is Team => Boolean(t));
+    // keep an already-picked team visible even if it is not in the tournament list
+    [teamAId, teamBId].forEach((pid) => {
+      if (pid && !list.some((t) => t.id === pid)) {
+        const extra = teamLookupPool.find((t) => t.id === pid);
+        if (extra) list.push(extra);
+      }
+    });
+    return list.length > 0 ? list : teams;
+  })();
   const teamA = teamLookupPool.find((t) => t.id === teamAId) || blankTeamPlaceholder;
   const teamB = teamLookupPool.find((t) => t.id === teamBId) || blankTeamPlaceholder;
 
@@ -657,7 +674,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
-                {teams.map((t) => (
+                {dropdownTeams.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
@@ -689,7 +706,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 className="mt-2 text-xs font-black text-white bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 focus:outline-none max-w-[130px] truncate disabled:opacity-50"
               >
                 <option value="">— Select Team —</option>
-                {teams.map((t) => (
+                {dropdownTeams.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
