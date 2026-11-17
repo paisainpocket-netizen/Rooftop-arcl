@@ -368,6 +368,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [editFormat, setEditFormat] = useState<'Round Robin + Knockout' | 'League' | 'Knockout'>('Round Robin + Knockout');
   const [editBannerImage, setEditBannerImage] = useState<string>('');
   const [editGroups, setEditGroups] = useState<{ [teamId: string]: string }>({});
+  const [editTeamIds, setEditTeamIds] = useState<string[]>([]);
+  const [editTeamSearch, setEditTeamSearch] = useState('');
 
   const handleUpdateTeamStatus = (teamId: string, status: StatusKey) => {
     if (!selectedTournament) return;
@@ -413,6 +415,8 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     setEditFormat(tour.format);
     setEditBannerImage(tour.bannerImage || '');
     setEditGroups(((tour as any).teamGroups as { [teamId: string]: string }) || {});
+    setEditTeamIds([...(tour.teams || [])]);
+    setEditTeamSearch('');
     setIsEditingTournament(true);
   };
 
@@ -445,11 +449,16 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
     }
 
     const cleanGroups: { [teamId: string]: string } = {};
-    (selectedTournament.teams || []).forEach((id) => {
+    editTeamIds.forEach((id) => {
       if (editGroups[id]) cleanGroups[id] = editGroups[id];
     });
+    if (editTeamIds.length < 2) {
+      alert('Tournament mein kam se kam 2 teams honi chahiye.');
+      return;
+    }
     const updatedTour = {
       ...selectedTournament,
+      teams: editTeamIds,
       teamGroups: cleanGroups,
       tournamentId: editTournamentId.trim().toUpperCase() || selectedTournament.tournamentId || 'TRN-001',
       name: editName.trim(),
@@ -2073,114 +2082,88 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                 </div>
               </div>
 
-              {(selectedTournament?.teams || []).length > 0 && (
+              {/* Participating teams: add / remove */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-300">Participating Teams</label>
+                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/30 text-amber-300 font-mono text-[10px] font-bold">
+                    {editTeamIds.length} Teams
+                  </span>
+                </div>
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                  {editTeamIds.map((tId) => {
+                    const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
+                    const played = (tournamentMatches || []).some(
+                      (m) => m && m.teamA && m.teamB && (m.teamA.id === tId || m.teamB.id === tId)
+                    );
+                    return (
+                      <div key={tId} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                        <span className="truncate text-xs text-slate-200 font-bold">{teamObj?.name || tId}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (played) {
+                              alert('Is team ke is tournament mein match ban chuke hain, isliye hata nahi sakte.');
+                              return;
+                            }
+                            setEditTeamIds((prev) => prev.filter((id) => id !== tId));
+                          }}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                            played
+                              ? 'bg-slate-900 border-slate-700 text-slate-500'
+                              : 'bg-rose-950/40 border-rose-800/50 text-rose-300'
+                          }`}
+                        >
+                          {played ? 'Played' : 'Remove'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <label className="text-xs font-bold text-slate-300 block mt-3 mb-1">Add Teams</label>
+                <input
+                  value={editTeamSearch}
+                  onChange={(e) => setEditTeamSearch(e.target.value)}
+                  placeholder="Team ka naam ya ID likho"
+                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
+                />
+                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1 mt-2">
+                  {(teams || [])
+                    .filter((t) => t && !editTeamIds.includes(t.id))
+                    .filter((t) => {
+                      const q = editTeamSearch.trim().toLowerCase();
+                      if (!q) return true;
+                      return (
+                        (t.name || '').toLowerCase().includes(q) ||
+                        (t.shortName || '').toLowerCase().includes(q) ||
+                        (t.teamId || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((t) => (
+                      <div key={t.id} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                        <span className="truncate text-xs text-slate-200 font-bold">{t.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            cricketAudio.playClick();
+                            setEditTeamIds((prev) => [...prev, t.id]);
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-emerald-950/40 border-emerald-700/50 text-emerald-300 cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {editTeamIds.length > 0 && (
                 <div>
                   <label className="text-xs font-bold text-slate-300 block mb-1">
                     Groups <span className="text-[10px] text-slate-500 font-normal">(optional, separate points table per group)</span>
                   </label>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                    {(selectedTournament?.teams || []).map((tId) => {
+                    {editTeamIds.map((tId) => {
                       const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
-                      if (!teamObj) return null;
-                      return (
-                        <div key={teamObj.id} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
-                          <span className="truncate text-xs text-slate-200 font-bold">{teamObj.name}</span>
-                          <select
-                            value={editGroups[teamObj.id] || ''}
-                            onChange={(e) => setEditGroups((prev) => ({ ...prev, [teamObj.id]: e.target.value }))}
-                            className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-bold cursor-pointer"
-                          >
-                            <option value="">No group</option>
-                            {['A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
-                              <option key={g} value={g}>Group {g}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingTournament(false)}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs shadow-md"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Team Status Selection Modal */}
-      {selectedTeamForStatusModal && selectedTournament && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 p-5 space-y-3 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-              <h3 className="text-sm font-black text-white">
-                Set Status: {selectedTeamForStatusModal.name}
-              </h3>
-              <button
-                onClick={() => setSelectedTeamForStatusModal(null)}
-                className="p-1 rounded-lg bg-slate-800 text-slate-400"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            <div className="space-y-1.5">
-              {STATUS_ORDER.map((statusKey) => {
-                const cfg = STATUS_CONFIG[statusKey];
-                const isCurrent = (selectedTournament.teamStatuses?.[selectedTeamForStatusModal.id] || 'none') === statusKey;
-
-                return (
-                  <button
-                    key={statusKey}
-                    type="button"
-                    onClick={() => {
-                      handleUpdateTeamStatus(selectedTeamForStatusModal.id, statusKey);
-                      setSelectedTeamForStatusModal(null);
-                    }}
-                    className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition cursor-pointer ${
-                      isCurrent
-                        ? `${cfg.badgePill} ring-1 ring-amber-400`
-                        : 'bg-slate-950/70 hover:bg-slate-800 border-slate-800 text-slate-300'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span>{cfg.icon}</span>
-                      <span className="text-xs font-bold">{cfg.label}</span>
-                    </div>
-                    {isCurrent && <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Team Profile Inspector Modal */}
-      {inspectedTeam && (
-        <TeamProfileModal
-          isOpen={Boolean(inspectedTeam)}
-          onClose={() => setInspectedTeam(null)}
-          team={inspectedTeam}
-          allTeams={teams}
-          allMatches={allMatches}
-          onOpenScorecard={onOpenScorecard}
-                  />
-      )}
-    </div>
-  );
-};
+           
