@@ -1906,6 +1906,7 @@ export default function App() {
           isAdmin={isAdmin}
           onResetPlayerFormatStats={handleResetPlayerFormatStats}
           onRebuildAllStats={handleRebuildAllPlayerStats}
+          allPlayers={players}
         />
       )}
 
