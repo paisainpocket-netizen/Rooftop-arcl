@@ -1,71 +1,60 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { Player } from '../types/cricket';
+import React, { useMemo, useState } from 'react';
 import { X, Share2, Download, Search } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
+import { TournamentPlayerStat } from '../utils/tournamentStats';
 
-interface PlayerCompareModalProps {
+// Head to head between two players using ONLY this tournament's numbers.
+// Everything is taken from the stats the tournament screen already computed,
+// so opening this screen reads nothing extra from Firebase.
+
+interface TournamentCompareModalProps {
   isOpen: boolean;
   onClose: () => void;
-  playerA: Player;
-  players: Player[];
+  stats: TournamentPlayerStat[];
+  tournamentName: string;
+  season?: string;
 }
-
-type FmtKey = 'all' | 't10' | 't20' | 'club' | 'test';
-
-const FORMATS: { id: FmtKey; label: string; badge: string }[] = [
-  { id: 'all', label: 'Overall', badge: 'OVERALL' },
-  { id: 't10', label: 'T10 / T6', badge: 'T10 / T6' },
-  { id: 't20', label: 'T20', badge: 'T20' },
-  { id: 'club', label: 'Club / Terrace', badge: 'CLUB / TERRACE' },
-  { id: 'test', label: 'Test', badge: 'TEST' },
-];
-
-const num = (v: any): number => (typeof v === 'number' && isFinite(v) ? v : 0);
-
-const statsOf = (p: Player, fmt: FmtKey): any =>
-  (fmt === 'all' ? p.stats : (p as any).formatStats?.[fmt]) || {};
 
 interface Row {
   label: string;
-  value: (s: any) => number; // number used to decide who is ahead
-  show: (s: any) => string; // text shown
+  value: (s: TournamentPlayerStat) => number;
+  show: (s: TournamentPlayerStat) => string;
   lowerIsBetter?: boolean;
 }
 
 const ROWS: Row[] = [
-  { label: 'Matches', value: (s) => num(s.matches), show: (s) => String(num(s.matches)) },
-  { label: 'Runs', value: (s) => num(s.runs), show: (s) => String(num(s.runs)) },
+  { label: 'Matches', value: (s) => s.matches, show: (s) => String(s.matches) },
+  { label: 'Runs', value: (s) => s.runs, show: (s) => String(s.runs) },
   {
     label: 'Average',
-    value: (s) => num(s.battingAverage),
-    show: (s) => (s.battingAverage ? Number(s.battingAverage).toFixed(2) : '-'),
+    value: (s) => (s.innings > 0 ? s.battingAverage : 0),
+    show: (s) => (s.innings > 0 ? s.battingAverage.toFixed(2) : '-'),
   },
   {
     label: 'Strike Rate',
-    value: (s) => num(s.strikeRate),
-    show: (s) => (s.strikeRate ? Number(s.strikeRate).toFixed(1) : '-'),
+    value: (s) => s.strikeRate,
+    show: (s) => (s.ballsFaced > 0 ? s.strikeRate.toFixed(1) : '-'),
   },
   {
     label: 'Highest',
-    value: (s) => num(s.highestScore),
-    show: (s) => `${num(s.highestScore)}${s.highestScoreNotOut ? '*' : ''}`,
+    value: (s) => s.highestScore,
+    show: (s) => (s.innings > 0 ? `${s.highestScore}${s.highestScoreNotOut ? '*' : ''}` : '-'),
   },
-  { label: 'Fifties', value: (s) => num(s.fifties), show: (s) => String(num(s.fifties)) },
-  { label: 'Sixes', value: (s) => num(s.sixes), show: (s) => String(num(s.sixes)) },
-  { label: 'Wickets', value: (s) => num(s.wickets), show: (s) => String(num(s.wickets)) },
+  { label: 'Sixes', value: (s) => s.sixes, show: (s) => String(s.sixes) },
+  { label: 'Wickets', value: (s) => s.wickets, show: (s) => String(s.wickets) },
   {
     label: 'Economy',
-    value: (s) => num(s.economy),
-    show: (s) => (s.economy ? Number(s.economy).toFixed(1) : '-'),
+    value: (s) => (s.legalBallsBowled > 0 ? s.economy : 0),
+    show: (s) => (s.legalBallsBowled > 0 ? s.economy.toFixed(1) : '-'),
     lowerIsBetter: true,
   },
-  { label: 'Catches', value: (s) => num(s.catches), show: (s) => String(num(s.catches)) },
+  { label: 'Catches', value: (s) => s.catches, show: (s) => String(s.catches) },
+  { label: 'MVP Points', value: (s) => s.mvpPoints, show: (s) => s.mvpPoints.toFixed(1) },
 ];
 
-// 'a' / 'b' / null (tie or no data)
-function leader(row: Row, sa: any, sb: any): 'a' | 'b' | null {
-  const va = row.value(sa);
-  const vb = row.value(sb);
+function leader(row: Row, a: TournamentPlayerStat, b: TournamentPlayerStat): 'a' | 'b' | null {
+  const va = row.value(a);
+  const vb = row.value(b);
   if (va === vb) return null;
   if (row.lowerIsBetter) {
     if (va === 0) return vb === 0 ? null : 'b';
@@ -274,74 +263,62 @@ function drawIplPoster(topLine: string, left: PosterSide, right: PosterSide, row
   return canvas;
 }
 
-function drawPoster(
-  a: Player,
-  b: Player,
-  fmt: FmtKey,
-  avA: HTMLImageElement | null,
-  avB: HTMLImageElement | null
-): HTMLCanvasElement {
-  const sa = statsOf(a, fmt);
-  const sb = statsOf(b, fmt);
-  const badge = FORMATS.find((f) => f.id === fmt)?.badge || '';
+function drawPoster(a: TournamentPlayerStat, b: TournamentPlayerStat, tournamentName: string, season?: string): HTMLCanvasElement {
   const rows: PosterRow[] = ROWS.map((row) => ({
     label: row.label,
-    a: row.show(sa),
-    b: row.show(sb),
-    lead: leader(row, sa, sb),
+    a: row.show(a),
+    b: row.show(b),
+    lead: leader(row, a, b),
   }));
   return drawIplPoster(
-    `ARCL  ·  ${badge} CAREER`,
-    { name: a.name || '', img: avA },
-    { name: b.name || '', img: avB },
+    `${tournamentName}${season ? '  ·  ' + season : ''}`,
+    { name: a.playerName || '', team: a.teamName },
+    { name: b.playerName || '', team: b.teamName },
     rows
   );
 }
 
-export const PlayerCompareModal: React.FC<PlayerCompareModalProps> = ({ isOpen, onClose, playerA, players }) => {
-  const [playerB, setPlayerB] = useState<Player | null>(null);
+export const TournamentCompareModal: React.FC<TournamentCompareModalProps> = ({
+  isOpen,
+  onClose,
+  stats,
+  tournamentName,
+  season,
+}) => {
+  const [pa, setPa] = useState<TournamentPlayerStat | null>(null);
+  const [pb, setPb] = useState<TournamentPlayerStat | null>(null);
   const [query, setQuery] = useState('');
-  const [fmt, setFmt] = useState<FmtKey>('all');
-  const [avA, setAvA] = useState<HTMLImageElement | null>(null);
-  const [avB, setAvB] = useState<HTMLImageElement | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const loadImg = (src: string | undefined, set: (i: HTMLImageElement | null) => void) => {
-    set(null);
-    if (!src) return;
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => set(img);
-    img.onerror = () => set(null);
-    img.src = src;
-  };
-  useEffect(() => loadImg(playerA.avatar, setAvA), [playerA.avatar]);
-  useEffect(() => loadImg(playerB?.avatar, setAvB), [playerB?.avatar]);
+  // only people who actually played in this tournament, best run-scorers first
+  const pool = useMemo(
+    () =>
+      [...(stats || [])]
+        .filter((s) => s.matches > 0)
+        .sort((x, y) => y.runs - x.runs || y.wickets - x.wickets),
+    [stats]
+  );
 
   const candidates = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (players || [])
-      .filter((p) => p && p.id !== playerA.id)
-      .filter((p) => !q || (p.name || '').toLowerCase().includes(q) || (p.profileId || '').toLowerCase().includes(q))
-      .slice(0, 40);
-  }, [players, playerA.id, query]);
+    return pool
+      .filter((s) => (!pa || s.playerId !== pa.playerId) && (!pb || s.playerId !== pb.playerId))
+      .filter((s) => !q || s.playerName.toLowerCase().includes(q) || (s.teamName || '').toLowerCase().includes(q))
+      .slice(0, 50);
+  }, [pool, query, pa, pb]);
 
   const dataUrl = useMemo(() => {
-    if (!isOpen || !playerB) return '';
+    if (!isOpen || !pa || !pb) return '';
     try {
-      return drawPoster(playerA, playerB, fmt, avA, avB).toDataURL('image/png');
+      return drawPoster(pa, pb, tournamentName, season).toDataURL('image/png');
     } catch (e) {
-      try {
-        return drawPoster(playerA, playerB, fmt, null, null).toDataURL('image/png');
-      } catch (e2) {
-        return '';
-      }
+      return '';
     }
-  }, [isOpen, playerA, playerB, fmt, avA, avB]);
+  }, [isOpen, pa, pb, tournamentName, season]);
 
   if (!isOpen) return null;
 
-  const fileName = `ARCL_${(playerA.name || 'A').replace(/\s+/g, '_')}_vs_${(playerB?.name || 'B').replace(/\s+/g, '_')}.png`;
+  const fileName = `ARCL_${(pa?.playerName || 'A').replace(/\s+/g, '_')}_vs_${(pb?.playerName || 'B').replace(/\s+/g, '_')}.png`;
 
   const makeFile = (): File => {
     const bin = atob(dataUrl.split(',')[1] || '');
@@ -358,7 +335,7 @@ export const PlayerCompareModal: React.FC<PlayerCompareModalProps> = ({ isOpen, 
       const file = makeFile();
       const nav: any = navigator;
       if (nav.canShare && nav.canShare({ files: [file] })) {
-        await nav.share({ files: [file], title: `${playerA.name} vs ${playerB?.name} - ARCL` });
+        await nav.share({ files: [file], title: `${pa?.playerName} vs ${pb?.playerName} - ${tournamentName}` });
       } else {
         const a = document.createElement('a');
         a.href = dataUrl;
@@ -383,14 +360,16 @@ export const PlayerCompareModal: React.FC<PlayerCompareModalProps> = ({ isOpen, 
     a.click();
   };
 
-  const sa = statsOf(playerA, fmt);
-  const sb = playerB ? statsOf(playerB, fmt) : {};
+  const needPick = !pa || !pb;
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-start justify-center p-3 overflow-y-auto">
       <div className="w-full max-w-sm flex flex-col items-stretch space-y-3 py-2">
         <div className="flex items-center justify-between px-1 text-white">
-          <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Head to Head</span>
+          <div className="min-w-0">
+            <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400 block">Head to Head</span>
+            <span className="text-[10px] text-slate-500 truncate block">{tournamentName} · sirf is tournament ke numbers</span>
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white cursor-pointer"
@@ -399,104 +378,97 @@ export const PlayerCompareModal: React.FC<PlayerCompareModalProps> = ({ isOpen, 
           </button>
         </div>
 
-        {!playerB ? (
+        {(pa || pb) && (
+          <div className="grid grid-cols-2 gap-2">
+            {[pa, pb].map((p, i) => (
+              <div
+                key={i}
+                className={`rounded-xl border px-3 py-2 min-h-[48px] flex items-center justify-between gap-2 ${
+                  i === 0 ? 'border-emerald-700/60 bg-emerald-950/30' : 'border-amber-700/60 bg-amber-950/20'
+                }`}
+              >
+                <div className="min-w-0">
+                  <span className="block text-xs font-black text-white truncate">{p ? p.playerName : 'Chuno...'}</span>
+                  {p && <span className="block text-[10px] text-slate-400 truncate">{p.teamName}</span>}
+                </div>
+                {p && (
+                  <button
+                    onClick={() => (i === 0 ? setPa(null) : setPb(null))}
+                    className="text-[10px] font-bold text-slate-400 hover:text-white cursor-pointer shrink-0"
+                  >
+                    Change
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {needPick ? (
           <div className="rounded-2xl bg-slate-900 border border-slate-800 p-3.5 space-y-3">
-            <p className="text-xs text-slate-300">
-              <span className="font-bold text-white">{playerA.name}</span> ke saath kisse compare karna hai?
-            </p>
+            <p className="text-xs text-slate-300">{!pa ? 'Pehla khiladi chuno' : 'Dusra khiladi chuno'}</p>
             <div className="relative">
               <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Khiladi ka naam ya ID likho"
+                placeholder="Khiladi ya team ka naam likho"
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
               />
             </div>
             <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
               {candidates.length === 0 && (
-                <div className="text-center py-6 text-xs text-slate-500">Koi khiladi nahi mila.</div>
+                <div className="text-center py-6 text-xs text-slate-500">Is tournament mein koi khiladi nahi mila.</div>
               )}
-              {candidates.map((p) => (
+              {candidates.map((s) => (
                 <button
-                  key={p.id}
+                  key={s.playerId}
                   onClick={() => {
                     cricketAudio.playClick();
-                    setPlayerB(p);
+                    setQuery('');
+                    if (!pa) setPa(s);
+                    else setPb(s);
                   }}
-                  className="w-full flex items-center gap-3 p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-600 text-left cursor-pointer"
+                  className="w-full flex items-center justify-between gap-3 p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-600 text-left cursor-pointer"
                 >
-                  <div className="w-9 h-9 rounded-full bg-slate-800 overflow-hidden flex items-center justify-center text-sm font-black text-white shrink-0">
-                    {p.avatar ? (
-                      <img src={p.avatar} alt="" className="w-full h-full object-cover" />
-                    ) : (
-                      (p.name || '?').charAt(0).toUpperCase()
-                    )}
-                  </div>
                   <div className="min-w-0">
-                    <span className="block text-xs font-bold text-white truncate">{p.name}</span>
-                    <span className="block text-[10px] text-slate-500 font-mono">{p.profileId}</span>
+                    <span className="block text-xs font-bold text-white truncate">{s.playerName}</span>
+                    <span className="block text-[10px] text-slate-500 truncate">{s.teamName}</span>
                   </div>
+                  <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                    {s.runs} runs · {s.wickets} wkts
+                  </span>
                 </button>
               ))}
             </div>
           </div>
         ) : (
           <>
-            <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-              {FORMATS.map((f) => (
-                <button
-                  key={f.id}
-                  onClick={() => {
-                    setFmt(f.id);
-                    cricketAudio.playClick();
-                  }}
-                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
-                    fmt === f.id
-                      ? 'bg-emerald-600 border-emerald-500 text-white'
-                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-            </div>
-
-            {/* Live table */}
             <div className="rounded-2xl bg-slate-900 border border-slate-800 overflow-hidden">
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center px-3 py-2.5 bg-slate-950 border-b border-slate-800 text-xs font-black">
-                <span className="text-emerald-300 truncate">{playerA.name}</span>
-                <button
-                  onClick={() => setPlayerB(null)}
-                  className="px-2 text-[10px] font-bold text-slate-400 hover:text-white cursor-pointer"
-                  title="Dusra khiladi chuno"
-                >
-                  Change
-                </button>
-                <span className="text-amber-300 truncate text-right">{playerB.name}</span>
-              </div>
               {ROWS.map((row) => {
-                const lead = leader(row, sa, sb);
+                const lead = leader(row, pa!, pb!);
                 return (
                   <div
                     key={row.label}
                     className="grid grid-cols-[1fr_auto_1fr] items-center px-3 py-2 border-b border-slate-800/60 last:border-0"
                   >
                     <span className={`font-mono text-sm font-black ${lead === 'a' ? 'text-emerald-300' : 'text-slate-300'}`}>
-                      {row.show(sa)}
+                      {row.show(pa!)}
                     </span>
                     <span className="text-[10px] uppercase tracking-wider text-slate-500 px-2">{row.label}</span>
                     <span
                       className={`font-mono text-sm font-black text-right ${lead === 'b' ? 'text-amber-300' : 'text-slate-300'}`}
                     >
-                      {row.show(sb)}
+                      {row.show(pb!)}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            {dataUrl && <img src={dataUrl} alt="Head to head poster" className="w-full rounded-2xl border border-slate-700 shadow-2xl" />}
+            {dataUrl && (
+              <img src={dataUrl} alt="Tournament head to head poster" className="w-full rounded-2xl border border-slate-700 shadow-2xl" />
+            )}
 
             <div className="grid grid-cols-2 gap-2">
               <button
