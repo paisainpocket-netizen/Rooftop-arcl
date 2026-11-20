@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { PlayerShareCardModal } from './PlayerShareCardModal';
+import { PlayerCompareModal } from './PlayerCompareModal';
 
 interface PlayerProfileModalProps {
   isOpen: boolean;
@@ -40,6 +41,8 @@ interface PlayerProfileModalProps {
   // Admin only: rebuild every player's totals from all completed matches. Resolves to the
   // number of matches used (0 = could not reach the cloud, nothing changed).
   onRebuildAllStats?: () => Promise<number>;
+  // All players, used by the Compare (head to head) screen to pick the second player.
+  allPlayers?: Player[];
 }
 
 type MatchFormatKey = 'all' | 't10' | 't20' | 'club' | 'test';
@@ -124,6 +127,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   isAdmin,
   onResetPlayerFormatStats,
   onRebuildAllStats,
+  allPlayers,
 }) => {
   const [activeTab, setActiveTab] = useState<'statistics' | 'formats' | 'overview' | 'matches' | 'teams'>('statistics');
   const [statsSubTab, setStatsSubTab] = useState<'bat' | 'bowl' | 'field' | 'matchwise'>('bat');
@@ -131,6 +135,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [copiedId, setCopiedId] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState('');
 
   if (!isOpen) return null;
@@ -223,6 +228,17 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950 shrink-0">
             <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Player Profile</span>
             <div className="flex items-center gap-2">
+              {allPlayers && allPlayers.length > 1 && (
+                <button
+                  onClick={() => {
+                    cricketAudio.playClick();
+                    setShowCompare(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold cursor-pointer border border-slate-700"
+                >
+                  Compare
+                </button>
+              )}
               <button
                 onClick={() => {
                   cricketAudio.playClick('Opening full screen player card');
@@ -691,6 +707,15 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {showCompare && allPlayers && (
+        <PlayerCompareModal
+          isOpen={showCompare}
+          onClose={() => setShowCompare(false)}
+          playerA={player}
+          players={allPlayers}
+        />
+      )}
 
       {showShareCard && (
         <PlayerShareCardModal
