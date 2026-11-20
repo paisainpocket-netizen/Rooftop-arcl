@@ -75,21 +75,27 @@ function leader(row: Row, sa: any, sb: any): 'a' | 'b' | null {
   return va > vb ? 'a' : 'b';
 }
 
-function drawPoster(
-  a: Player,
-  b: Player,
-  fmt: FmtKey,
-  avA: HTMLImageElement | null,
-  avB: HTMLImageElement | null
-): HTMLCanvasElement {
+interface PosterSide {
+  name: string;
+  team?: string;
+  img?: HTMLImageElement | null;
+}
+interface PosterRow {
+  label: string;
+  a: string;
+  b: string;
+  lead: 'a' | 'b' | null;
+}
+
+// IPL style poster (1080 x 1350). Pure canvas drawing, no network.
+function drawIplPoster(topLine: string, left: PosterSide, right: PosterSide, rows: PosterRow[]): HTMLCanvasElement {
   const W = 1080;
   const H = 1350;
+  const F = 'sans-serif';
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
   const x = canvas.getContext('2d') as CanvasRenderingContext2D;
-  const sa = statsOf(a, fmt);
-  const sb = statsOf(b, fmt);
 
   const text = (t: string, px: number, py: number, font: string, col: string, al: CanvasTextAlign = 'center') => {
     x.font = font;
@@ -97,96 +103,199 @@ function drawPoster(
     x.textAlign = al;
     x.fillText(t, px, py);
   };
-  const fit = (t: string, px: number, py: number, maxW: number, start: number, weight: string, col: string) => {
+  const fit = (t: string, px: number, py: number, maxW: number, start: number, weight: string, col: string, style = 'italic ') => {
     let s = start;
-    x.font = `${weight} ${s}px sans-serif`;
-    while (x.measureText(t).width > maxW && s > 20) {
+    x.font = `${style}${weight} ${s}px ${F}`;
+    while (x.measureText(t).width > maxW && s > 14) {
       s -= 2;
-      x.font = `${weight} ${s}px sans-serif`;
+      x.font = `${style}${weight} ${s}px ${F}`;
     }
-    text(t, px, py, `${weight} ${s}px sans-serif`, col);
+    text(t, px, py, `${style}${weight} ${s}px ${F}`, col);
+  };
+  const skew = (cy: number, fn: () => void) => {
+    x.save();
+    x.transform(1, 0, -0.22, 1, 0.22 * cy, 0);
+    fn();
+    x.restore();
   };
 
+  // background
   const g = x.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#04120d');
-  g.addColorStop(0.5, '#0b1f19');
-  g.addColorStop(1, '#050b12');
+  g.addColorStop(0, '#040a22');
+  g.addColorStop(0.55, '#07123a');
+  g.addColorStop(1, '#030617');
   x.fillStyle = g;
   x.fillRect(0, 0, W, H);
-  const r = x.createRadialGradient(W / 2, 260, 20, W / 2, 260, 620);
-  r.addColorStop(0, 'rgba(212,175,55,.22)');
-  r.addColorStop(1, 'rgba(0,0,0,0)');
-  x.fillStyle = r;
+  const gl = x.createRadialGradient(170, 400, 10, 170, 400, 560);
+  gl.addColorStop(0, 'rgba(37,99,235,.55)');
+  gl.addColorStop(1, 'rgba(37,99,235,0)');
+  x.fillStyle = gl;
   x.fillRect(0, 0, W, H);
-  x.strokeStyle = 'rgba(212,175,55,.55)';
-  x.lineWidth = 3;
-  x.strokeRect(34, 34, W - 68, H - 68);
+  const gr = x.createRadialGradient(910, 400, 10, 910, 400, 560);
+  gr.addColorStop(0, 'rgba(249,115,22,.5)');
+  gr.addColorStop(1, 'rgba(249,115,22,0)');
+  x.fillStyle = gr;
+  x.fillRect(0, 0, W, H);
+  x.save();
+  x.rotate(-0.35);
+  for (let i = -6; i < 22; i++) {
+    x.fillStyle = `rgba(255,255,255,${i % 3 === 0 ? 0.045 : 0.02})`;
+    x.fillRect(-300 + i * 90, -200, 26, 1900);
+  }
+  x.restore();
+  const tg = x.createLinearGradient(0, 0, W, 0);
+  tg.addColorStop(0, '#2563eb');
+  tg.addColorStop(0.5, '#fbbf24');
+  tg.addColorStop(1, '#f97316');
+  x.fillStyle = tg;
+  x.fillRect(0, 0, W, 12);
+  x.fillRect(0, H - 12, W, 12);
 
-  text('ARCL', W / 2, 100, '800 32px sans-serif', '#d4af37');
-  text('HEAD TO HEAD', W / 2, 160, '800 54px sans-serif', '#fcd34d');
-  const badge = FORMATS.find((f) => f.id === fmt)?.badge || '';
-  text(`${badge} CAREER`, W / 2, 200, '600 22px sans-serif', 'rgba(255,255,255,.55)');
+  // header
+  x.fillStyle = 'rgba(251,191,36,.7)';
+  x.fillRect(70, 70, 150, 3);
+  x.fillRect(W - 220, 70, 150, 3);
+  fit(topLine.toUpperCase(), W / 2, 78, 600, 22, '700', '#fbbf24', '');
+  x.save();
+  x.shadowColor = 'rgba(249,115,22,.7)';
+  x.shadowBlur = 30;
+  text('HEAD TO HEAD', W / 2, 170, `italic 900 92px ${F}`, '#ffffff');
+  x.restore();
 
-  // Avatars
-  const avatar = (p: Player, img: HTMLImageElement | null, cx: number, ring: string) => {
-    const cy = 320;
+  // players
+  const cy0 = 395;
+  const R0 = 118;
+  const side = (p: PosterSide, cx: number, c1: string, c2: string) => {
     x.save();
+    x.shadowColor = c1;
+    x.shadowBlur = 50;
     x.beginPath();
-    x.arc(cx, cy, 82, 0, Math.PI * 2);
-    x.closePath();
-    x.fillStyle = '#14302a';
+    x.arc(cx, cy0, R0 + 8, 0, Math.PI * 2);
+    x.fillStyle = c1;
     x.fill();
-    if (img) {
-      x.clip();
-      const s = Math.max(164 / img.width, 164 / img.height);
-      x.drawImage(img, cx - (img.width * s) / 2, cy - (img.height * s) / 2, img.width * s, img.height * s);
-    }
     x.restore();
     x.beginPath();
-    x.arc(cx, cy, 82, 0, Math.PI * 2);
-    x.lineWidth = 6;
-    x.strokeStyle = ring;
-    x.stroke();
-    if (!img) text((p.name || '?').charAt(0).toUpperCase(), cx, cy + 30, '800 80px sans-serif', '#fff');
-    fit((p.name || '').toUpperCase(), cx, 460, 400, 38, '800', '#fff');
-  };
-  avatar(a, avA, 250, '#10b981');
-  avatar(b, avB, 830, '#f59e0b');
-  text('VS', W / 2, 340, '800 46px sans-serif', 'rgba(255,255,255,.45)');
-
-  // Rows
-  const top = 500;
-  const rowH = 66;
-  let winsA = 0;
-  let winsB = 0;
-  ROWS.forEach((row, i) => {
-    const y = top + i * rowH;
-    const lead = leader(row, sa, sb);
-    if (lead === 'a') winsA++;
-    if (lead === 'b') winsB++;
-    x.fillStyle = i % 2 === 0 ? 'rgba(255,255,255,.05)' : 'rgba(255,255,255,.02)';
-    x.beginPath();
-    x.roundRect(70, y, 940, rowH - 8, 16);
+    x.arc(cx, cy0, R0 + 8, 0, Math.PI * 2);
+    const rg = x.createLinearGradient(cx - R0, cy0 - R0, cx + R0, cy0 + R0);
+    rg.addColorStop(0, '#fff');
+    rg.addColorStop(0.4, c1);
+    rg.addColorStop(1, c2);
+    x.fillStyle = rg;
     x.fill();
-    text(row.show(sa), 250, y + 43, `800 36px sans-serif`, lead === 'a' ? '#6ee7b7' : 'rgba(255,255,255,.8)');
-    text(row.show(sb), 830, y + 43, `800 36px sans-serif`, lead === 'b' ? '#fcd34d' : 'rgba(255,255,255,.8)');
-    text(row.label.toUpperCase(), W / 2, y + 40, '700 20px sans-serif', 'rgba(255,255,255,.5)');
+    x.save();
+    x.beginPath();
+    x.arc(cx, cy0, R0 - 4, 0, Math.PI * 2);
+    x.closePath();
+    const ig = x.createRadialGradient(cx, cy0 - 30, 10, cx, cy0, R0);
+    ig.addColorStop(0, '#16296b');
+    ig.addColorStop(1, '#070f2e');
+    x.fillStyle = ig;
+    x.fill();
+    if (p.img) {
+      x.clip();
+      const d = (R0 - 4) * 2;
+      const s = Math.max(d / p.img.width, d / p.img.height);
+      x.drawImage(p.img, cx - (p.img.width * s) / 2, cy0 - (p.img.height * s) / 2, p.img.width * s, p.img.height * s);
+    }
+    x.restore();
+    if (!p.img) text((p.name || '?').charAt(0).toUpperCase(), cx, cy0 + 40, `italic 900 120px ${F}`, '#fff');
+    fit((p.name || '').toUpperCase(), cx, 578, 410, 44, '900', '#fff');
+    if (p.team) {
+      skew(612, () => {
+        x.fillStyle = c2;
+        x.fillRect(cx - 125, 590, 250, 36);
+      });
+      fit(p.team.toUpperCase(), cx, 616, 220, 19, '800', '#fff', '');
+    }
+  };
+  side(left, 230, '#3b82f6', '#1d4ed8');
+  side(right, 850, '#fb923c', '#ea580c');
+
+  // VS badge
+  x.save();
+  x.shadowColor = '#fbbf24';
+  x.shadowBlur = 35;
+  x.beginPath();
+  x.arc(540, cy0, 52, 0, Math.PI * 2);
+  const vg = x.createLinearGradient(490, 350, 590, 450);
+  vg.addColorStop(0, '#fde68a');
+  vg.addColorStop(1, '#f59e0b');
+  x.fillStyle = vg;
+  x.fill();
+  x.restore();
+  text('VS', 540, cy0 + 18, `italic 900 52px ${F}`, '#07123a');
+
+  // rows
+  const n = Math.max(rows.length, 1);
+  const rowH = Math.min(69, Math.floor(610 / n));
+  const bh = rowH - 14;
+  const vf = Math.round(bh * 0.73);
+  let y = 660;
+  rows.forEach((row) => {
+    const lead = row.lead;
+    const cy = y + bh / 2;
+    skew(cy, () => {
+      const lg = x.createLinearGradient(60, 0, 400, 0);
+      if (lead === 'a') {
+        lg.addColorStop(0, '#1d4ed8');
+        lg.addColorStop(1, '#3b82f6');
+      } else {
+        lg.addColorStop(0, 'rgba(59,130,246,.14)');
+        lg.addColorStop(1, 'rgba(59,130,246,.06)');
+      }
+      x.fillStyle = lg;
+      x.fillRect(60, y, 340, bh);
+      const rg2 = x.createLinearGradient(680, 0, 1020, 0);
+      if (lead === 'b') {
+        rg2.addColorStop(0, '#fb923c');
+        rg2.addColorStop(1, '#ea580c');
+      } else {
+        rg2.addColorStop(0, 'rgba(249,115,22,.06)');
+        rg2.addColorStop(1, 'rgba(249,115,22,.14)');
+      }
+      x.fillStyle = rg2;
+      x.fillRect(680, y, 340, bh);
+      x.fillStyle = '#0b1a4d';
+      x.fillRect(410, y, 260, bh);
+      x.strokeStyle = 'rgba(251,191,36,.55)';
+      x.lineWidth = 2;
+      x.strokeRect(410, y, 260, bh);
+      x.fillStyle = '#fbbf24';
+      if (lead === 'a') x.fillRect(392, y, 8, bh);
+      if (lead === 'b') x.fillRect(680, y, 8, bh);
+    });
+    text(row.label.toUpperCase(), 540, cy + 7, `800 20px ${F}`, '#fde68a');
+    text(row.a, 350, cy + vf * 0.34, `italic 900 ${vf}px ${F}`, lead === 'a' ? '#fff' : 'rgba(255,255,255,.6)', 'right');
+    text(row.b, 730, cy + vf * 0.34, `italic 900 ${vf}px ${F}`, lead === 'b' ? '#fff' : 'rgba(255,255,255,.6)', 'left');
+    y += rowH;
   });
 
-  // Summary
-  const sy = top + ROWS.length * rowH + 12;
-  x.fillStyle = 'rgba(212,175,55,.10)';
-  x.beginPath();
-  x.roundRect(70, sy, 940, 64, 18);
-  x.fill();
-  const sum =
-    winsA === winsB
-      ? `Barabar: ${winsA} - ${winsB}`
-      : `${winsA > winsB ? a.name : b.name} aage hai: ${Math.max(winsA, winsB)} - ${Math.min(winsA, winsB)}`;
-  fit(sum, W / 2, sy + 42, 880, 30, '700', '#fcd34d');
-
-  text('ARCL AMRITSAR  ·  ROOFTOP CRICKET LEAGUE', W / 2, 1298, '600 20px sans-serif', 'rgba(255,255,255,.4)');
+  text('ARCL AMRITSAR  ·  ROOFTOP CRICKET LEAGUE', W / 2, 1318, `700 20px ${F}`, 'rgba(255,255,255,.45)');
   return canvas;
+}
+
+function drawPoster(
+  a: Player,
+  b: Player,
+  fmt: FmtKey,
+  avA: HTMLImageElement | null,
+  avB: HTMLImageElement | null
+): HTMLCanvasElement {
+  const sa = statsOf(a, fmt);
+  const sb = statsOf(b, fmt);
+  const badge = FORMATS.find((f) => f.id === fmt)?.badge || '';
+  const rows: PosterRow[] = ROWS.map((row) => ({
+    label: row.label,
+    a: row.show(sa),
+    b: row.show(sb),
+    lead: leader(row, sa, sb),
+  }));
+  return drawIplPoster(
+    `ARCL  ·  ${badge} CAREER`,
+    { name: a.name || '', img: avA },
+    { name: b.name || '', img: avB },
+    rows
+  );
 }
 
 export const PlayerCompareModal: React.FC<PlayerCompareModalProps> = ({ isOpen, onClose, playerA, players }) => {
