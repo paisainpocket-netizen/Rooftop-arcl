@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { TeamProfileModal } from './TeamProfileModal';
+import { TournamentCompareModal } from './TournamentCompareModal';
 import { calculateTournamentStats, TournamentPlayerStat, bestBowlingLabel } from '../utils/tournamentStats';
 
 type StatsTab = 'points' | 'mvp' | 'runs' | 'wickets' | 'fielding' | 'boundaries' | 'dots' | 'ballsFaced';
@@ -302,6 +303,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   // Which tournament's own page is open (null = show the tournament list)
   const [openTournamentId, setOpenTournamentId] = useState<string | null>(initialTournamentId || null);
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
+  const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [boundarySort, setBoundarySort] = useState<'twos' | 'fours' | 'sixes' | 'runs'>('twos');
   // Phone-only: which points-table row is expanded to show Status / Ties / Form
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
@@ -1429,6 +1431,19 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     </button>
                   )}
 
+                  {tournamentPlayerStats.length > 1 && (
+                    <button
+                      onClick={() => {
+                        cricketAudio.playClick();
+                        setIsCompareOpen(true);
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border bg-slate-800 border-slate-700 text-slate-300 hover:text-white"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Compare</span>
+                    </button>
+                  )}
+
                   {canEditSelectedTournament && statsTab === 'points' && (
                     <button
                       onClick={() => setIsStatusManagerOpen((prev) => !prev)}
@@ -2265,6 +2280,15 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           allMatches={allMatches}
           onOpenScorecard={onOpenScorecard}
           isDarkMode={true}
+        />
+      )}
+      {isCompareOpen && selectedTournament && (
+        <TournamentCompareModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          stats={tournamentPlayerStats}
+          tournamentName={selectedTournament.name}
+          season={selectedTournament.season}
         />
       )}
     </div>
