@@ -47,6 +47,58 @@ const STORAGE_KEY_TOURNAMENTS = 'arcl_tournaments_v2';
 const STORAGE_KEY_THEME = 'arcl_theme_mode';
 const STORAGE_KEY_LOGGED_USER = 'arcl_logged_player_id';
 
+
+// ---- Cheap tournament refresh -------------------------------------------------
+// First time (and once a day) a phone reads ALL matches of a tournament. In between
+// it only reads matches that changed since the last read. This keeps Firebase reads
+// low even when a tournament has many matches. Anything unclear -> full read.
+const TOURNAMENT_SYNC_KEY = 'arcl_tour_sync_v1';
+const FULL_REFRESH_MS = 24 * 60 * 60 * 1000; // tournaments that are still running
+const FULL_REFRESH_DONE_MS = 30 * 24 * 60 * 60 * 1000; // finished tournaments rarely change
+const SYNC_MARGIN_MS = 60 * 60 * 1000;
+type TournamentSyncMap = Record<string, { t: number; n: number; s: number }>;
+
+function readTournamentSyncMap(): TournamentSyncMap {
+  try {
+    const raw = localStorage.getItem(TOURNAMENT_SYNC_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeTournamentSyncMap(map: TournamentSyncMap) {
+  try {
+    localStorage.setItem(TOURNAMENT_SYNC_KEY, JSON.stringify(map));
+  } catch {
+    // storage blocked: next time simply does a full read again
+  }
+}
+
+function planTournamentSync(wanted: string[], cached: Match[], map: TournamentSyncMap, now: number, doneIds: Set<string> = new Set()) {
+  const cachedCount: Record<string, number> = {};
+  cached.forEach((m) => {
+    if (m.tournamentId) cachedCount[m.tournamentId] = (cachedCount[m.tournamentId] || 0) + 1;
+  });
+  const needFull: string[] = [];
+  const incremental: string[] = [];
+  wanted.forEach((id) => {
+    const e = map[id];
+    if (!e || typeof e.t !== 'number' || typeof e.s !== 'number' || now - e.t > (doneIds.has(id) ? FULL_REFRESH_DONE_MS : FULL_REFRESH_MS) || (cachedCount[id] || 0) < (e.n || 0)) {
+      needFull.push(id);
+    } else {
+      incremental.push(id);
+    }
+  });
+  let since = 0;
+  if (incremental.length > 0) {
+    since = Math.min(...incremental.map((id) => map[id].s)) - SYNC_MARGIN_MS;
+    if (since <= 0) since = 0;
+  }
+  return { needFull, incremental: since > 0 ? incremental : [], since, forceFull: since > 0 ? [] : incremental };
+}
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<
     'live' | 'matches' | 'teams' | 'players' | 'tournaments' | 'rules' | 'saved_matches'
@@ -335,7 +387,8 @@ export default function App() {
     };
   }, [tournaments]);
 
-  // Step 2: fresh read from the server
+  // Step 2: refresh from the server (full read the first time / once a day, otherwise
+  // only the matches that changed since the last read)
   useEffect(() => {
     const needAll =
       activeTab === 'tournaments' || activeTab === 'teams' || !!inspectedPlayerId || isLoginModalOpen;
@@ -349,14 +402,50 @@ export default function App() {
     const last = lastTournamentFetchRef.current;
     if (last.key === key && Date.now() - last.at < 120000) return;
     lastTournamentFetchRef.current = { at: Date.now(), key };
-    let cancelled = false;
-    cloudDb.fetchMatchesByTournament(wanted).then((fetched) => {
-      if (cancelled || !fetched) return;
-      mergeFetchedTournamentMatches(fetched);
-    });
-    return () => {
-      cancelled = true;
-    };
+    (async () => {
+      try {
+        const cached = (await cloudDb.fetchMatchesByTournamentFromCache(wanted)) || [];
+        const map = readTournamentSyncMap();
+        const startedAt = Date.now();
+        const doneIds = new Set((tournaments || []).filter((t) => t.status === 'completed').map((t) => t.id));
+        const plan = planTournamentSync(wanted, cached, map, startedAt, doneIds);
+        const fullIds = [...plan.needFull, ...plan.forceFull];
+
+        if (fullIds.length > 0) {
+          const fetched = await cloudDb.fetchMatchesByTournament(fullIds);
+          if (fetched) {
+            mergeFetchedTournamentMatches(fetched);
+            fullIds.forEach((id) => {
+              const n = fetched.filter((m) => m.tournamentId === id).length;
+              map[id] = { t: startedAt, n, s: startedAt };
+            });
+          }
+        }
+        if (plan.incremental.length > 0) {
+          const changed = await cloudDb.fetchMatchesChangedSince(plan.since);
+          if (changed) {
+            const set = new Set(plan.incremental);
+            mergeFetchedTournamentMatches(changed.filter((m) => m.tournamentId && set.has(m.tournamentId)));
+            plan.incremental.forEach((id) => {
+              if (map[id]) map[id] = { ...map[id], s: startedAt };
+            });
+          } else {
+            // could not read the changes: do the full read instead
+            const fetched = await cloudDb.fetchMatchesByTournament(plan.incremental);
+            if (fetched) {
+              mergeFetchedTournamentMatches(fetched);
+              plan.incremental.forEach((id) => {
+                const n = fetched.filter((m) => m.tournamentId === id).length;
+                map[id] = { t: startedAt, n, s: startedAt };
+              });
+            }
+          }
+        }
+        writeTournamentSyncMap(map);
+      } catch (e) {
+        console.warn('tournament refresh failed:', e);
+      }
+    })();
   }, [activeTab, tournaments, inspectedPlayerId, isLoginModalOpen]);
 
   // Every match known on this phone: recent + live + tournament matches. Used for
@@ -1374,6 +1463,7 @@ export default function App() {
             hasMoreOlderMatches={hasMoreOlderMatches}
             onEditCompletedMatch={(m) => setMatchBeingEdited(m)}
             onEditMatchDetails={(m) => setMatchBeingDetailEdited(m)}
+            onUpdateMatchResult={handleUpdateMatchDetails}
             isDarkMode={isDarkMode}
             onOpenLoginModal={() => setIsLoginModalOpen(true)}
           />
