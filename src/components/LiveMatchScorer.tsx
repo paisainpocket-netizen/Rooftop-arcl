@@ -18,6 +18,10 @@ import {
   getPressureBowlerText,
   getHatTrickText,
   getMaidenOverText,
+  getFiftyText,
+  getHundredText,
+  getThreeWicketsText,
+  getFiveWicketsText,
 } from '../utils/commentary';
 import { calculateMatchMVP, getRecommendedMOM, type PlayerMVPScore } from '../utils/mvp';
 import { PointsSystemModal } from './PointsSystemModal';
@@ -791,9 +795,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
       if (currentStrikerData.runs < 100 && newStrikerRuns >= 100) {
         setMilestone({ icon: '💯', title: 'CENTURY!', name: striker.name, detail: `${newStrikerRuns} runs off ${newStrikerBalls} balls` });
+        cricketAudio.speak(getHundredText(striker.name, commentaryLang));
         launchCelebration();
       } else if (currentStrikerData.runs < 50 && newStrikerRuns >= 50) {
         setMilestone({ icon: '🔥', title: 'FIFTY!', name: striker.name, detail: `${newStrikerRuns} runs off ${newStrikerBalls} balls` });
+        cricketAudio.speak(getFiftyText(striker.name, commentaryLang));
         launchCelebration();
       }
 
@@ -872,8 +878,10 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     const newBowlerWickets = currentBowlerData.wickets + (isBowlerWicket ? 1 : 0);
     if (isBowlerWicket && currentBowlerData.wickets < 5 && newBowlerWickets >= 5) {
       setMilestone({ icon: '🖐️', title: '5 WICKETS!', name: bowler?.name || 'Bowler', detail: `${newBowlerWickets} wickets` });
+      cricketAudio.speak(getFiveWicketsText(bowler?.name || 'Bowler', commentaryLang));
     } else if (isBowlerWicket && currentBowlerData.wickets < 3 && newBowlerWickets >= 3) {
       setMilestone({ icon: '🎯', title: '3 WICKETS!', name: bowler?.name || 'Bowler', detail: `${newBowlerWickets} wickets` });
+      cricketAudio.speak(getThreeWicketsText(bowler?.name || 'Bowler', commentaryLang));
     }
     const newBowlerDots = currentBowlerData.dots + (runsBat === 0 && extraType === 'none' && !isWicket ? 1 : 0);
     const newBowlerWides = currentBowlerData.wides + (extraType === 'wide' ? 1 : 0);
