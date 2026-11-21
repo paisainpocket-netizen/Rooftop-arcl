@@ -129,6 +129,7 @@ interface MatchesListViewProps {
   hasMoreOlderMatches?: boolean;
   onEditCompletedMatch?: (match: Match) => void;
   onEditMatchDetails?: (match: Match) => void;
+  onUpdateMatchResult?: (match: Match) => void;
   onOpenTournament?: (tournamentId: string) => void;
   isDarkMode: boolean;
   onOpenLoginModal?: () => void;
@@ -148,6 +149,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   hasMoreOlderMatches = true,
   onEditCompletedMatch,
   onEditMatchDetails,
+  onUpdateMatchResult,
   onOpenTournament,
   isDarkMode,
   onOpenLoginModal,
@@ -186,6 +188,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   // Which match's "Share Squad / Poster" modal is currently open (null = closed)
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
   const [momMatch, setMomMatch] = useState<Match | null>(null);
+  const [tieMatch, setTieMatch] = useState<Match | null>(null);
 
   const isUserAdmin = Boolean(
     loggedInPlayer &&
@@ -704,6 +707,20 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                     ) : null}
                   </div>
 
+                  {isCompleted && m.result?.isTie && canUserDelete && onUpdateMatchResult && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        cricketAudio.playClick();
+                        setTieMatch(m);
+                      }}
+                      className="mt-1.5 w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-black hover:bg-amber-500/25 transition"
+                    >
+                      <span>🏆</span>
+                      <span>Super Over winner chuno</span>
+                    </button>
+                  )}
+
                   {isCompleted && m.result?.playerOfTheMatch && (
                     <div className="flex items-center gap-1 text-[11px] font-bold text-amber-300 pt-1">
                       <span>⭐</span>
@@ -822,6 +839,46 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
           detects match.status !== 'live' && !== 'completed' internally
           and renders the squad-lineup poster instead of a score poster,
           so no extra logic is needed here — just open it with the picked match. */}
+      {tieMatch && onUpdateMatchResult && (
+        <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-slate-900 border border-slate-700 p-4 space-y-3 shadow-2xl">
+            <div className="text-center space-y-1">
+              <div className="text-sm font-black text-amber-300">Super Over winner chuno</div>
+              <div className="text-[11px] text-slate-400">
+                Match tie tha. Jo team Super Over jeeti, uspe dabao. Usko 2 point milenge aur doosri team ko 0.
+              </div>
+            </div>
+            {[tieMatch.teamA, tieMatch.teamB].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => {
+                  cricketAudio.playClick();
+                  onUpdateMatchResult({
+                    ...tieMatch,
+                    result: {
+                      ...tieMatch.result,
+                      isTie: false,
+                      winnerTeamId: t.id,
+                      winnerTeamName: t.name,
+                      summary: `Match TIED. ${t.name} won the Super Over! 🏆`,
+                    },
+                  });
+                  setTieMatch(null);
+                }}
+                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-sm cursor-pointer"
+              >
+                {t.name}
+              </button>
+            ))}
+            <button
+              onClick={() => setTieMatch(null)}
+              className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
       {momMatch && <MatchMomModal isOpen={true} onClose={() => setMomMatch(null)} match={momMatch} />}
       {shareMatch && (
         <ShareMatchCard
