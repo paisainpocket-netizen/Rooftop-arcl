@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { ShareMatchCard } from './ShareMatchCard';
+import { MatchMomModal } from './MatchMomModal';
 
 
 // ---------------------------------------------------------------------------
@@ -184,6 +185,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   }, [openActionsForMatchId]);
   // Which match's "Share Squad / Poster" modal is currently open (null = closed)
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
+  const [momMatch, setMomMatch] = useState<Match | null>(null);
 
   const isUserAdmin = Boolean(
     loggedInPlayer &&
@@ -707,6 +709,17 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       <span>⭐</span>
                       <span className="text-slate-400">POTM:</span>
                       <span className="truncate">{m.result.playerOfTheMatch.playerName}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cricketAudio.playClick();
+                          setMomMatch(m);
+                        }}
+                        className="ml-auto shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[10px] font-black hover:bg-amber-500/25 transition"
+                      >
+                        <Share2 className="w-3 h-3" />
+                        <span>MoM Poster</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -809,6 +822,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
           detects match.status !== 'live' && !== 'completed' internally
           and renders the squad-lineup poster instead of a score poster,
           so no extra logic is needed here — just open it with the picked match. */}
+      {momMatch && <MatchMomModal isOpen={true} onClose={() => setMomMatch(null)} match={momMatch} />}
       {shareMatch && (
         <ShareMatchCard
           isOpen={true}
