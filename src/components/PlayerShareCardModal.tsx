@@ -140,21 +140,22 @@ function drawCard(player: Player, team: Team | undefined, fmt: FmtKey, avatar: H
     fitText(t[2], cx + w / 2, cy + 172, w - 30, 24, '500', 'rgba(255,255,255,.55)');
   });
 
-  // Mini strip: 4s, 6s, 50s, Catches
+  // Mini strip: 4s, 6s, 50s, 100s, Catches
   const mini: [string, number][] = [
     ['FOURS', num(st.fours)],
     ['SIXES', num(st.sixes)],
     ['FIFTIES', num(st.fifties)],
+    ['HUNDREDS', num(st.centuries)],
     ['CATCHES', num(st.catches)],
   ];
   mini.forEach((m, i) => {
-    const cx = 70 + i * 238;
-    x.fillStyle = 'rgba(255,255,255,.04)';
+    const cx = 70 + i * 191;
+    x.fillStyle = m[0] === 'HUNDREDS' && m[1] > 0 ? 'rgba(212,175,55,.18)' : 'rgba(255,255,255,.04)';
     x.beginPath();
-    x.roundRect(cx, 1085, 224, 96, 18);
+    x.roundRect(cx, 1085, 176, 96, 18);
     x.fill();
-    text(String(m[1]), cx + 112, 1138, '800 44px sans-serif', '#fff');
-    text(m[0], cx + 112, 1168, '600 18px sans-serif', 'rgba(255,255,255,.5)');
+    text(String(m[1]), cx + 88, 1138, '800 44px sans-serif', m[0] === 'HUNDREDS' && m[1] > 0 ? '#fcd34d' : '#fff');
+    text(m[0], cx + 88, 1168, '600 17px sans-serif', 'rgba(255,255,255,.5)');
   });
 
   // Best line
