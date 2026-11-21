@@ -630,7 +630,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
                 onChange={(e) => setMatchStage(e.target.value as typeof matchStage)}
                 className="w-full text-xs font-bold text-white bg-slate-950 px-3 py-2 rounded-lg border border-slate-800 focus:outline-none"
               >
-                <option value="league">League Stage (counts in Points Table)</option>
+                <option value="league">League Stage</option>
                 <option value="eliminator">Eliminator</option>
                 <option value="qualifier1">Qualifier 1</option>
                 <option value="qualifier2">Qualifier 2</option>
@@ -640,7 +640,7 @@ export const CreateMatchModal: React.FC<CreateMatchModalProps> = ({
               </select>
               {matchStage !== 'league' && (
                 <p className="text-[10px] text-amber-300/80 leading-snug">
-                  Knockout matches don't count in the Points Table / NRR — they'll show separately under Playoffs.
+                  Knockout matches also count in the Points Table and NRR.
                 </p>
               )}
             </div>
