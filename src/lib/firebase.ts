@@ -695,6 +695,27 @@ export const cloudDb = {
   },
 
   /**
+   * Reads only the matches that were saved/changed after `since` (milliseconds).
+   * Finished matches almost never change, so after the first full read a phone only
+   * needs these few. Uses the always-present index on `updatedAt` (no new index).
+   * Returns null on failure so the caller can fall back to the full read.
+   */
+  async fetchMatchesChangedSince(since: number): Promise<Match[] | null> {
+    if (!since || isQuotaExceeded) return null;
+    try {
+      const snap = await getDocs(
+        query(collection(db, COLLECTIONS.MATCHES), where('updatedAt', '>', since))
+      );
+      const out: Match[] = [];
+      snap.forEach((d) => out.push(d.data() as Match));
+      return out;
+    } catch (error) {
+      console.warn('fetchMatchesChangedSince failed:', error);
+      return null;
+    }
+  },
+
+  /**
    * Same as fetchMatchesByTournament, but reads ONLY what this phone has already saved
    * (no network, not counted as Firebase reads). Gives correct numbers instantly; the
    * server read then refreshes anything new. Returns null if nothing is saved yet.
