@@ -123,3 +123,30 @@ export function getMaidenOverText(bowlerName: string, lang: 'pa' | 'hi' | 'en'):
   if (lang === 'hi') return `क्या बोलिंग की है, ${bowlerName} ने मेडन ओवर डालकर कमाल कर दिया!`;
   return `Superb bowling! ${bowlerName} delivers a brilliant maiden over!`;
 }
+// Batsman reaches 50
+export function getFiftyText(batterName: string, lang: 'pa' | 'hi' | 'en'): string {
+  if (lang === 'pa') return `ਸ਼ਾਬਾਸ਼! ${batterName} ਨੇ ਆਪਣਾ ਅਰਧ ਸੈਂਕੜਾ ਪੂਰਾ ਕਰ ਲਿਆ, ਪੂਰੇ ਪੰਜਾਹ ਦੌੜਾਂ!`;
+  if (lang === 'hi') return `${batterName} ने शानदार फिफ्टी पूरी कर ली! पूरे पचास रन, क्या बात है!`;
+  return `Fifty up for ${batterName}! A brilliant half-century!`;
+}
+
+// Batsman reaches 100
+export function getHundredText(batterName: string, lang: 'pa' | 'hi' | 'en'): string {
+  if (lang === 'pa') return `ਕਮਾਲ ਹੋ ਗਿਆ! ${batterName} ਨੇ ਸੈਂਕੜਾ ਜੜ ਦਿੱਤਾ, ਪੂਰੀਆਂ ਸੌ ਦੌੜਾਂ!`;
+  if (lang === 'hi') return `सेंचुरी! सेंचुरी! ${batterName} ने शानदार शतक जड़ दिया, पूरे सौ रन!`;
+  return `Century! ${batterName} reaches a magnificent hundred!`;
+}
+
+// Bowler takes his 3rd wicket
+export function getThreeWicketsText(bowlerName: string, lang: 'pa' | 'hi' | 'en'): string {
+  if (lang === 'pa') return `${bowlerName} ਨੇ ਤਿੰਨ ਵਿਕਟਾਂ ਲੈ ਲਈਆਂ, ਕਿਆ ਗੇਂਦਬਾਜ਼ੀ ਹੈ!`;
+  if (lang === 'hi') return `${bowlerName} ने तीन विकेट ले लिए, क्या गेंदबाजी है!`;
+  return `Three wickets for ${bowlerName}, what a spell!`;
+}
+
+// Bowler takes his 5th wicket
+export function getFiveWicketsText(bowlerName: string, lang: 'pa' | 'hi' | 'en'): string {
+  if (lang === 'pa') return `ਪੰਜ ਵਿਕਟਾਂ! ${bowlerName} ਨੇ ਕਮਾਲ ਦੀ ਗੇਂਦਬਾਜ਼ੀ ਕੀਤੀ!`;
+  if (lang === 'hi') return `पांच विकेट! ${bowlerName} ने कमाल की गेंदबाजी की, पंजा खोल दिया!`;
+  return `Five wickets! ${bowlerName} rips through the batting line-up!`;
+}
