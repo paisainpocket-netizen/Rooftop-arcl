@@ -23,6 +23,7 @@ import {
 import { cricketAudio } from '../utils/audio';
 import { PlayerShareCardModal } from './PlayerShareCardModal';
 import { PlayerCompareModal } from './PlayerCompareModal';
+import { PlayerBadges } from './PlayerBadges';
 
 interface PlayerProfileModalProps {
   isOpen: boolean;
@@ -323,6 +324,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 <StatTile label="Wickets" value={player.stats.wickets} sub={`Econ ${player.stats.economy ? player.stats.economy.toFixed(1) : '-'}`} accent="text-emerald-300" />
                 <StatTile label="Fielding" value={(player.stats.catches || 0) + (player.stats.runOuts || 0)} sub={`${player.stats.catches || 0} Ct · ${player.stats.runOuts || 0} RO`} />
               </div>
+              <PlayerBadges stats={player.stats} />
             </div>
 
             {/* Tabs */}
