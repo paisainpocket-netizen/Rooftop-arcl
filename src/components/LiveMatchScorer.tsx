@@ -106,6 +106,13 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
   );
 
   const [voiceEnabled, setVoiceEnabled] = useState<boolean>(() => cricketAudio.getIsVoiceEnabled());
+  // Small "Fifty / Hundred / 3 wickets" popup. Only a screen message, nothing is saved.
+  const [milestone, setMilestone] = useState<{ icon: string; title: string; name: string; detail: string } | null>(null);
+  useEffect(() => {
+    if (!milestone) return;
+    const t = setTimeout(() => setMilestone(null), 4500);
+    return () => clearTimeout(t);
+  }, [milestone]);
   const [commentaryLang, setCommentaryLang] = useState<'pa' | 'hi' | 'en'>(() => cricketAudio.getCommentaryLanguage());
 
   const [isWagonWheelModalOpen, setIsWagonWheelModalOpen] = useState(false);
@@ -782,6 +789,14 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
       const newStrikerSixes = currentStrikerData.sixes + (isSix ? 1 : 0);
       const newStrikerSR = newStrikerBalls > 0 ? Number(((newStrikerRuns / newStrikerBalls) * 100).toFixed(1)) : 0;
 
+      if (currentStrikerData.runs < 100 && newStrikerRuns >= 100) {
+        setMilestone({ icon: '💯', title: 'CENTURY!', name: striker.name, detail: `${newStrikerRuns} runs off ${newStrikerBalls} balls` });
+        launchCelebration();
+      } else if (currentStrikerData.runs < 50 && newStrikerRuns >= 50) {
+        setMilestone({ icon: '🔥', title: 'FIFTY!', name: striker.name, detail: `${newStrikerRuns} runs off ${newStrikerBalls} balls` });
+        launchCelebration();
+      }
+
       let strikerDismissal = currentStrikerData.dismissalText;
       let strikerIsOut = currentStrikerData.isOut;
       let strikerIsRetiredHurt = currentStrikerData.isRetiredHurt || false;
@@ -855,6 +870,11 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
     
     const isBowlerWicket = isRealWicket && !['runout', 'timed_out', 'retired', 'retired_hurt'].includes(wicketDetails?.wicketType || '');
     const newBowlerWickets = currentBowlerData.wickets + (isBowlerWicket ? 1 : 0);
+    if (isBowlerWicket && currentBowlerData.wickets < 5 && newBowlerWickets >= 5) {
+      setMilestone({ icon: '🖐️', title: '5 WICKETS!', name: bowler?.name || 'Bowler', detail: `${newBowlerWickets} wickets` });
+    } else if (isBowlerWicket && currentBowlerData.wickets < 3 && newBowlerWickets >= 3) {
+      setMilestone({ icon: '🎯', title: '3 WICKETS!', name: bowler?.name || 'Bowler', detail: `${newBowlerWickets} wickets` });
+    }
     const newBowlerDots = currentBowlerData.dots + (runsBat === 0 && extraType === 'none' && !isWicket ? 1 : 0);
     const newBowlerWides = currentBowlerData.wides + (extraType === 'wide' ? 1 : 0);
     const newBowlerNoBalls = currentBowlerData.noBalls + (extraType === 'noBall' ? 1 : 0);
@@ -1563,6 +1583,18 @@ export const LiveMatchScorer: React.FC<LiveMatchScorerProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto space-y-3 sm:space-y-4 select-none pb-8">
+      {milestone && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[70] pointer-events-none px-4 w-full max-w-sm">
+          <div className="rounded-2xl border border-amber-400/60 bg-gradient-to-r from-blue-700 to-orange-600 shadow-2xl shadow-orange-500/30 px-4 py-3 flex items-center gap-3 animate-bounce">
+            <span className="text-3xl leading-none">{milestone.icon}</span>
+            <div className="min-w-0">
+              <div className="text-[11px] font-black tracking-[0.2em] text-amber-200">{milestone.title}</div>
+              <div className="text-base font-black text-white truncate">{milestone.name}</div>
+              <div className="text-[11px] font-semibold text-white/80">{milestone.detail}</div>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Scorer lock banner (one scorer at a time) */}
       {hasScoringPermission && lockedByOtherPhone && (
         <div className="p-3 rounded-2xl border border-amber-500/50 bg-amber-500/10 flex flex-wrap items-center justify-between gap-2">
