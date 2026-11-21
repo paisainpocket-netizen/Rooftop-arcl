@@ -2167,4 +2167,154 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                       return (
                         (t.name || '').toLowerCase().includes(q) ||
                         (t.shortName || '').toLowerCase().includes(q) ||
-                        (t.teamId || '').toLowerCase().in
+                        (t.teamId || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((t) => (
+                      <div key={t.id} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                        <span className="truncate text-xs text-slate-200 font-bold">{t.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            cricketAudio.playClick();
+                            setEditTeamIds((prev) => [...prev, t.id]);
+                          }}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold border bg-emerald-950/40 border-emerald-700/50 text-emerald-300 cursor-pointer"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+
+              {editTeamIds.length > 0 && (
+                <div>
+                  <label className="text-xs font-bold text-slate-300 block mb-1">
+                    Groups <span className="text-[10px] text-slate-500 font-normal">(optional, separate points table per group)</span>
+                  </label>
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {editTeamIds.map((tId) => {
+                      const teamObj = (teams || []).find((t) => t && (t.id === tId || t.teamId === tId || t.profileId === tId));
+                      if (!teamObj) return null;
+                      return (
+                        <div key={teamObj.id} className="flex items-center justify-between gap-2 p-2 rounded-xl bg-slate-950/80 border border-slate-800">
+                          <span className="truncate text-xs text-slate-200 font-bold">{teamObj.name}</span>
+                          <select
+                            value={editGroups[teamObj.id] || ''}
+                            onChange={(e) => setEditGroups((prev) => ({ ...prev, [teamObj.id]: e.target.value }))}
+                            className="px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-xs text-white font-bold cursor-pointer"
+                          >
+                            <option value="">No group</option>
+                            {['A', 'B', 'C', 'D', 'E', 'F'].map((g) => (
+                              <option key={g} value={g}>Group {g}</option>
+                            ))}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsEditingTournament(false)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black text-xs shadow-md"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Team Status Selection Modal */}
+      {selectedTeamForStatusModal && selectedTournament && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-sm rounded-3xl bg-slate-900 border border-slate-800 text-slate-100 p-5 space-y-3 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <h3 className="text-sm font-black text-white">
+                Set Status: {selectedTeamForStatusModal.name}
+              </h3>
+              <button
+                onClick={() => setSelectedTeamForStatusModal(null)}
+                className="p-1 rounded-lg bg-slate-800 text-slate-400"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="space-y-1.5">
+              {STATUS_ORDER.map((statusKey) => {
+                const cfg = STATUS_CONFIG[statusKey];
+                const isCurrent = (selectedTournament.teamStatuses?.[selectedTeamForStatusModal.id] || 'none') === statusKey;
+
+                return (
+                  <button
+                    key={statusKey}
+                    type="button"
+                    onClick={() => {
+                      handleUpdateTeamStatus(selectedTeamForStatusModal.id, statusKey);
+                      setSelectedTeamForStatusModal(null);
+                    }}
+                    className={`w-full p-2.5 rounded-xl border flex items-center justify-between transition cursor-pointer ${
+                      isCurrent
+                        ? `${cfg.badgePill} ring-1 ring-amber-400`
+                        : 'bg-slate-950/70 hover:bg-slate-800 border-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span>{cfg.icon}</span>
+                      <span className="text-xs font-bold">{cfg.label}</span>
+                    </div>
+                    {isCurrent && <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[3]" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Team Profile Inspector Modal */}
+      {inspectedTeam && (
+        <TeamProfileModal
+          isOpen={Boolean(inspectedTeam)}
+          onClose={() => setInspectedTeam(null)}
+          team={inspectedTeam}
+          allTeams={teams}
+          allMatches={allMatches}
+          onOpenScorecard={onOpenScorecard}
+          isDarkMode={true}
+        />
+      )}
+      {isAwardsOpen && selectedTournament && (
+        <TournamentAwardsModal
+          isOpen={isAwardsOpen}
+          onClose={() => setIsAwardsOpen(false)}
+          stats={tournamentPlayerStats}
+          tournamentName={selectedTournament.name}
+          season={selectedTournament.season}
+        />
+      )}
+      {isCompareOpen && selectedTournament && (
+        <TournamentCompareModal
+          isOpen={isCompareOpen}
+          onClose={() => setIsCompareOpen(false)}
+          stats={tournamentPlayerStats}
+          tournamentName={selectedTournament.name}
+          season={selectedTournament.season}
+        />
+      )}
+    </div>
+  );
+};
