@@ -10,6 +10,7 @@ import { cricketAudio } from '../utils/audio';
 import { TeamProfileModal } from './TeamProfileModal';
 import { TournamentCompareModal } from './TournamentCompareModal';
 import { TournamentAwardsModal } from './TournamentAwardsModal';
+import { BatterVsBowlerModal } from './BatterVsBowlerModal';
 import { calculateTournamentStats, TournamentPlayerStat, bestBowlingLabel } from '../utils/tournamentStats';
 
 type StatsTab = 'points' | 'mvp' | 'runs' | 'wickets' | 'fielding' | 'boundaries' | 'dots' | 'ballsFaced';
@@ -306,6 +307,7 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
   const [statsTab, setStatsTab] = useState<StatsTab>('points');
   const [isCompareOpen, setIsCompareOpen] = useState(false);
   const [isAwardsOpen, setIsAwardsOpen] = useState(false);
+  const [isBvbOpen, setIsBvbOpen] = useState(false);
   const [boundarySort, setBoundarySort] = useState<'twos' | 'fours' | 'sixes' | 'runs'>('twos');
   // Phone-only: which points-table row is expanded to show Status / Ties / Form
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
@@ -1459,6 +1461,19 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
                     </button>
                   )}
 
+                  {tournamentMatches.length > 0 && (
+                    <button
+                      onClick={() => {
+                        cricketAudio.playClick();
+                        setIsBvbOpen(true);
+                      }}
+                      className="px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-1.5 transition cursor-pointer border bg-gradient-to-r from-blue-600 to-orange-500 border-blue-400/40 text-white shadow-md"
+                    >
+                      <Users className="w-3.5 h-3.5" />
+                      <span>Bat vs Ball</span>
+                    </button>
+                  )}
+
                   {canEditSelectedTournament && statsTab === 'points' && (
                     <button
                       onClick={() => setIsStatusManagerOpen((prev) => !prev)}
@@ -2295,6 +2310,17 @@ export const TournamentManager: React.FC<TournamentManagerProps> = ({
           allMatches={allMatches}
           onOpenScorecard={onOpenScorecard}
           isDarkMode={true}
+        />
+      )}
+      {isBvbOpen && selectedTournament && (
+        <BatterVsBowlerModal
+          isOpen={isBvbOpen}
+          onClose={() => setIsBvbOpen(false)}
+          matches={tournamentMatches}
+          allMatches={allMatches}
+          tournamentName={selectedTournament.name}
+          season={selectedTournament.season}
+          teamOf={Object.fromEntries((tournamentPlayerStats || []).map((p) => [p.playerId, p.teamName]))}
         />
       )}
       {isAwardsOpen && selectedTournament && (
