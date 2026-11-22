@@ -60,119 +60,164 @@ function drawCard(player: Player, team: Team | undefined, fmt: FmtKey, avatar: H
     text(t, px, py, `${weight} ${s}px sans-serif`, col);
   };
 
+  // ---------- IPL style look ----------
+  const SK = 14; // slant of the bars
+  const slant = (px: number, py: number, w: number, h: number) => {
+    x.beginPath();
+    x.moveTo(px + SK, py);
+    x.lineTo(px + w, py);
+    x.lineTo(px + w - SK, py + h);
+    x.lineTo(px, py + h);
+    x.closePath();
+  };
+  const bar = (px: number, py: number, w: number, h: number, fill: string | CanvasGradient, stroke: string) => {
+    slant(px, py, w, h);
+    x.fillStyle = fill;
+    x.fill();
+    x.lineWidth = 2;
+    x.strokeStyle = stroke;
+    x.stroke();
+  };
+
   // Background
-  const g = x.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, '#04120d');
-  g.addColorStop(0.5, '#0b1f19');
-  g.addColorStop(1, '#050b12');
+  const g = x.createLinearGradient(0, 0, W, H);
+  g.addColorStop(0, '#071a3d');
+  g.addColorStop(0.55, '#0a1230');
+  g.addColorStop(1, '#14082e');
   x.fillStyle = g;
   x.fillRect(0, 0, W, H);
-  const r = x.createRadialGradient(W / 2, 260, 20, W / 2, 260, 600);
-  r.addColorStop(0, 'rgba(16,185,129,.28)');
-  r.addColorStop(1, 'rgba(16,185,129,0)');
-  x.fillStyle = r;
+  const g1 = x.createRadialGradient(150, 220, 10, 150, 220, 620);
+  g1.addColorStop(0, 'rgba(37,99,235,.55)');
+  g1.addColorStop(1, 'rgba(37,99,235,0)');
+  x.fillStyle = g1;
   x.fillRect(0, 0, W, H);
-  x.strokeStyle = 'rgba(212,175,55,.55)';
-  x.lineWidth = 3;
-  x.strokeRect(34, 34, W - 68, H - 68);
+  const g2 = x.createRadialGradient(950, 1180, 10, 950, 1180, 560);
+  g2.addColorStop(0, 'rgba(249,115,22,.40)');
+  g2.addColorStop(1, 'rgba(249,115,22,0)');
+  x.fillStyle = g2;
+  x.fillRect(0, 0, W, H);
+  // diagonal light streaks
+  x.save();
+  x.globalAlpha = 0.06;
+  x.fillStyle = '#fff';
+  for (let i = 0; i < 6; i++) {
+    x.beginPath();
+    x.moveTo(-100 + i * 230, 0);
+    x.lineTo(-40 + i * 230, 0);
+    x.lineTo(-340 + i * 230, H);
+    x.lineTo(-400 + i * 230, H);
+    x.closePath();
+    x.fill();
+  }
+  x.restore();
+  // gold frame
+  const gold = x.createLinearGradient(0, 0, W, 0);
+  gold.addColorStop(0, '#f59e0b');
+  gold.addColorStop(0.5, '#fde68a');
+  gold.addColorStop(1, '#f59e0b');
+  x.strokeStyle = gold;
+  x.lineWidth = 4;
+  x.strokeRect(30, 30, W - 60, H - 60);
 
-  // Header
-  text('ARCL', W / 2, 104, '800 34px sans-serif', '#d4af37');
+  // Header: gold ARCL tag + format tag
   const badge = FORMATS.find((f) => f.id === fmt)?.badge || 'CAREER';
-  text(badge, W / 2, 148, '700 24px sans-serif', 'rgba(255,255,255,.6)');
+  bar(60, 62, 170, 62, gold, 'rgba(0,0,0,0)');
+  text('ARCL', 60 + 85, 107, '900 42px sans-serif', '#1a1203');
+  bar(250, 62, W - 310, 62, 'rgba(255,255,255,.08)', 'rgba(255,255,255,.18)');
+  text(badge, 250 + (W - 310) / 2, 104, '800 28px sans-serif', '#fff');
 
   // Avatar
-  const AY = 318;
+  const AY = 290;
+  const ring = x.createLinearGradient(W / 2 - 130, AY - 130, W / 2 + 130, AY + 130);
+  ring.addColorStop(0, '#fde68a');
+  ring.addColorStop(1, '#f97316');
+  x.beginPath();
+  x.arc(W / 2, AY, 134, 0, Math.PI * 2);
+  x.fillStyle = 'rgba(253,230,138,.12)';
+  x.fill();
   x.save();
   x.beginPath();
-  x.arc(W / 2, AY, 116, 0, Math.PI * 2);
+  x.arc(W / 2, AY, 112, 0, Math.PI * 2);
   x.closePath();
-  x.fillStyle = '#14302a';
+  x.fillStyle = '#10234f';
   x.fill();
   if (avatar) {
     x.clip();
-    const s = Math.max(232 / avatar.width, 232 / avatar.height);
+    const s = Math.max(224 / avatar.width, 224 / avatar.height);
     const dw = avatar.width * s;
     const dh = avatar.height * s;
     x.drawImage(avatar, W / 2 - dw / 2, AY - dh / 2, dw, dh);
   }
   x.restore();
   x.beginPath();
-  x.arc(W / 2, AY, 116, 0, Math.PI * 2);
-  x.lineWidth = 7;
-  x.strokeStyle = '#10b981';
+  x.arc(W / 2, AY, 112, 0, Math.PI * 2);
+  x.lineWidth = 8;
+  x.strokeStyle = ring;
   x.stroke();
-  if (!avatar) text((player.name || '?').charAt(0).toUpperCase(), W / 2, AY + 42, '800 118px sans-serif', '#fff');
+  if (!avatar) text((player.name || '?').charAt(0).toUpperCase(), W / 2, AY + 42, '900 118px sans-serif', '#fff');
 
-  // Name
-  fitText((player.name || '').toUpperCase(), W / 2, 522, 900, 72, '800', '#fff');
+  // Name + role/team
+  fitText((player.name || '').toUpperCase(), W / 2, 492, 900, 80, '900', '#fff');
   const sub = [player.role ? String(player.role).replace(/-/g, ' ') : '', team?.name || '']
     .filter(Boolean)
     .join('  ·  ');
-  fitText(sub.replace(/\b\w/g, (c) => c.toUpperCase()), W / 2, 574, 900, 32, '500', 'rgba(255,255,255,.72)');
+  fitText(sub.replace(/\b\w/g, (c) => c.toUpperCase()), W / 2, 540, 900, 32, '700', '#fbbf24');
 
-  // Main tiles
-  const tiles: [string, string, string, string][] = [
-    ['MATCHES', String(matches), `${innings} innings`, '#fff'],
-    [
-      'RUNS',
-      String(runs),
-      `Avg ${avg}${notOuts !== null ? ` · ${notOuts} Not Out${notOuts === 1 ? '' : 's'}` : ''}`,
-      '#fcd34d',
-    ],
-    ['WICKETS', String(wickets), `Economy ${econ}`, '#6ee7b7'],
-    ['HIGHEST', hs, `Strike Rate ${sr}`, '#fff'],
-  ];
-  tiles.forEach((t, i) => {
-    const cx = 70 + (i % 2) * 470;
-    const cy = 625 + Math.floor(i / 2) * 225;
-    const w = 440;
-    const h = 200;
-    x.fillStyle = 'rgba(255,255,255,.05)';
-    x.beginPath();
-    x.roundRect(cx, cy, w, h, 26);
-    x.fill();
-    x.strokeStyle = 'rgba(255,255,255,.12)';
-    x.lineWidth = 2;
-    x.stroke();
-    text(t[0], cx + w / 2, cy + 48, '700 24px sans-serif', 'rgba(255,255,255,.55)');
-    text(t[1], cx + w / 2, cy + 126, '800 82px sans-serif', t[3]);
-    fitText(t[2], cx + w / 2, cy + 172, w - 30, 24, '500', 'rgba(255,255,255,.55)');
-  });
+  // Hero panels: RUNS and WICKETS
+  const hero = (px: number, label: string, val: string, c1: string, c2: string, numCol: string) => {
+    const hg = x.createLinearGradient(px, 575, px + 455, 765);
+    hg.addColorStop(0, c1);
+    hg.addColorStop(1, c2);
+    bar(px, 575, 455, 185, hg, 'rgba(255,255,255,.28)');
+    text(label, px + 455 / 2, 625, '800 28px sans-serif', 'rgba(255,255,255,.85)');
+    text(val, px + 455 / 2, 725, '900 108px sans-serif', numCol);
+  };
+  hero(60, 'RUNS', String(runs), 'rgba(37,99,235,.65)', 'rgba(30,64,175,.35)', '#fde68a');
+  hero(565, 'WICKETS', String(wickets), 'rgba(234,88,12,.65)', 'rgba(154,52,18,.35)', '#fff');
 
-  // Mini strip: 4s, 6s, 50s, 100s, Catches
-  const mini: [string, number][] = [
-    ['FOURS', num(st.fours)],
-    ['SIXES', num(st.sixes)],
-    ['FIFTIES', num(st.fifties)],
-    ['HUNDREDS', num(st.centuries)],
-    ['CATCHES', num(st.catches)],
-  ];
-  mini.forEach((m, i) => {
-    const cx = 70 + i * 191;
-    x.fillStyle = m[0] === 'HUNDREDS' && m[1] > 0 ? 'rgba(212,175,55,.18)' : 'rgba(255,255,255,.04)';
-    x.beginPath();
-    x.roundRect(cx, 1085, 176, 96, 18);
-    x.fill();
-    text(String(m[1]), cx + 88, 1138, '800 44px sans-serif', m[0] === 'HUNDREDS' && m[1] > 0 ? '#fcd34d' : '#fff');
-    text(m[0], cx + 88, 1168, '600 17px sans-serif', 'rgba(255,255,255,.5)');
-  });
+  // Stat bars
+  const row = (py: number, h: number, gap: number, items: [string, string, boolean][], vSize: number, lSize: number) => {
+    const n = items.length;
+    const w = (940 - gap * (n - 1)) / n;
+    items.forEach((m, i) => {
+      const px = 70 + i * (w + gap);
+      const hl = m[2];
+      bar(px, py, w, h, hl ? 'rgba(251,191,36,.22)' : 'rgba(255,255,255,.07)', hl ? 'rgba(251,191,36,.8)' : 'rgba(255,255,255,.16)');
+      text(m[1], px + w / 2, py + h * 0.56, `900 ${vSize}px sans-serif`, hl ? '#fde68a' : '#fff');
+      text(m[0], px + w / 2, py + h * 0.86, `700 ${lSize}px sans-serif`, hl ? '#fbbf24' : 'rgba(255,255,255,.62)');
+    });
+  };
+  row(785, 112, 18, [
+    ['MATCHES', String(matches), false],
+    ['INNINGS', String(innings), false],
+    ['NOT OUTS', notOuts === null ? '-' : String(notOuts), true],
+    ['HIGHEST', hs, false],
+  ], 52, 22);
+  row(915, 112, 18, [
+    ['AVERAGE', String(avg), false],
+    ['STRIKE RATE', String(sr), false],
+    ['ECONOMY', String(econ), false],
+  ], 52, 22);
+  row(1045, 100, 14, [
+    ['FOURS', String(num(st.fours)), false],
+    ['SIXES', String(num(st.sixes)), false],
+    ['FIFTIES', String(num(st.fifties)), false],
+    ['HUNDREDS', String(num(st.centuries)), num(st.centuries) > 0],
+    ['CATCHES', String(num(st.catches)), false],
+  ], 42, 19);
 
   // Best line
   if (bestBowl || num(st.highestScore) > 0) {
     const parts = [
-      num(st.highestScore) > 0 ? `Best Bat ${hs}` : '',
-      bestBowl ? `Best Bowl ${bestBowl}` : '',
+      num(st.highestScore) > 0 ? `BEST BAT ${hs}` : '',
+      bestBowl ? `BEST BOWL ${bestBowl}` : '',
     ].filter(Boolean);
-    x.fillStyle = 'rgba(212,175,55,.12)';
-    x.beginPath();
-    x.roundRect(70, 1205, 940, 60, 18);
-    x.fill();
-    fitText(parts.join('   ·   '), W / 2, 1245, 880, 28, '700', '#fcd34d');
+    bar(70, 1170, 940, 70, gold, 'rgba(0,0,0,0)');
+    fitText(parts.join('     |     '), W / 2, 1219, 860, 32, '900', '#1a1203');
   }
 
   // Footer
-  text(`ARCL AMRITSAR  ·  ${player.profileId || player.id}`, W / 2, 1298, '600 22px sans-serif', 'rgba(255,255,255,.4)');
+  text(`ARCL AMRITSAR  ·  ${player.profileId || player.id}`, W / 2, 1292, '700 22px sans-serif', 'rgba(255,255,255,.5)');
   return canvas;
 }
 
