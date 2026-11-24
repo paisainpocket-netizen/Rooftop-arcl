@@ -1425,6 +1425,7 @@ export default function App() {
                 setActiveTab('tournaments');
               }}
               onOpenLoginModal={() => setIsLoginModalOpen(true)}
+              onUpdateMatch={handleUpdateMatchDetails}
               isDarkMode={isDarkMode}
             />
           )
