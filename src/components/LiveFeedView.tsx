@@ -25,6 +25,7 @@ interface LiveFeedViewProps {
   onOpenTournament?: (tournamentId: string) => void;
   onSelectMatchesTab?: () => void;
   onDeleteMatch?: (matchId: string) => void;
+  onUpdateMatch?: (match: Match) => void;
   isDarkMode?: boolean;
 }
 
@@ -83,6 +84,14 @@ const isUnplayedSampleMatch = (m: Match): boolean =>
   m.id === SAMPLE_MATCH_ID &&
   [m.innings1, m.innings2, m.innings3, m.innings4].every((inn) => !inn || (inn.balls || []).length === 0);
 
+// A live match the scorer has put on hold (e.g. players not available, to be played later).
+// It is marked with isPaused + pausedAt. The moment anything is scored or edited again the
+// match's updatedAt moves past pausedAt, so it automatically counts as live again.
+const isPausedMatch = (m: Match): boolean => {
+  const a: any = m;
+  return m.status === 'live' && a.isPaused === true && Number(m.updatedAt || 0) <= Number(a.pausedAt || 0) + 2000;
+};
+
 export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   currentMatch = null,
   savedMatches = [],
@@ -102,6 +111,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
   onOpenTournament,
   onSelectMatchesTab = () => {},
   onDeleteMatch,
+  onUpdateMatch,
   isDarkMode = true,
 }) => {
   const handleScorecard = onWatchMatch || onOpenScorecard || (() => {});
@@ -144,8 +154,27 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
 
   // Extract real live matches
   const liveMatches = useMemo(() => {
-    return allMatches.filter((m) => m.status === 'live');
+    return allMatches.filter((m) => m.status === 'live' && !isPausedMatch(m));
   }, [allMatches]);
+
+  // Live matches that are on hold
+  const pausedMatches = useMemo(() => {
+    return allMatches.filter((m) => isPausedMatch(m));
+  }, [allMatches]);
+
+  const pauseMatch = (m: Match) => {
+    if (!onUpdateMatch) return;
+    const now = Date.now();
+    onUpdateMatch({ ...(m as any), isPaused: true, pausedAt: now, updatedAt: now } as Match);
+    cricketAudio.playClick();
+  };
+  const resumeMatch = (m: Match) => {
+    if (onUpdateMatch) {
+      onUpdateMatch({ ...(m as any), isPaused: false, updatedAt: Date.now() } as Match);
+    }
+    handleScoring(m);
+    cricketAudio.playClick();
+  };
 
   // Extract recent completed matches
   const recentCompletedMatches = useMemo(() => {
@@ -430,6 +459,17 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
                             >
                               📄 Scorecard
                             </button>
+                            {canScoreThis && onUpdateMatch && (
+                              <button
+                                onClick={() => {
+                                  setOpenActionMatchId(null);
+                                  pauseMatch(m);
+                                }}
+                                className="w-full text-left px-3.5 py-2 text-xs font-bold text-amber-300 hover:bg-slate-900"
+                              >
+                                ⏸ Pause Match
+                              </button>
+                            )}
                             {canUserDelete && (
                               <button
                                 onClick={() => {
@@ -567,6 +607,89 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
         )}
       </div>
 
+      {/* Paused matches (on hold, not being played right now) */}
+      {pausedMatches.length > 0 && (
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-base">⏸</span>
+            <h2 className="text-base font-black tracking-tight text-white">Paused Matches</h2>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30">
+              {pausedMatches.length} On Hold
+            </span>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {pausedMatches.map((m) => {
+              const teamA = m.teamA || { id: 'team-a', name: 'Team A' };
+              const teamB = m.teamB || { id: 'team-b', name: 'Team B' };
+              const isCreatorP = Boolean(
+                loggedInPlayer &&
+                ((m.creatorId && m.creatorId === loggedInPlayer.id) ||
+                 (m.creatorProfileId && loggedInPlayer.profileId && m.creatorProfileId.toLowerCase() === loggedInPlayer.profileId.toLowerCase()))
+              );
+              const isDelegatedP = Boolean(
+                loggedInPlayer &&
+                m.delegatedScorerProfileId &&
+                (m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.profileId?.toLowerCase() ||
+                 m.delegatedScorerProfileId.toLowerCase() === loggedInPlayer.id.toLowerCase())
+              );
+              const canResume = isCreatorP || isUserAdmin || isDelegatedP;
+              const scoreOf = (teamId: string) => {
+                const inns = [m.innings1, m.innings2, m.innings3, m.innings4].filter(
+                  (inn): inn is NonNullable<typeof inn> => Boolean(inn) && inn!.teamId === teamId && (inn!.balls || []).length > 0
+                );
+                if (inns.length === 0) return 'Yet to bat';
+                const last = inns[inns.length - 1];
+                return `${last.totalRuns || 0}-${last.totalWickets || 0} (${last.oversCompleted || 0}.${last.ballsInCurrentOver || 0})`;
+              };
+              return (
+                <div key={m.id} className="rounded-2xl border border-slate-700 bg-slate-900/70 overflow-hidden">
+                  <div className="px-3.5 pt-3 pb-2 space-y-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                        ⏸ PAUSED
+                      </span>
+                      {m.name && (
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-cyan-950/70 text-cyan-300 border border-cyan-800/60 break-words">
+                          {m.name}
+                        </span>
+                      )}
+                    </div>
+                    <h3 className="text-sm font-black text-slate-200 leading-snug break-words">
+                      {m.tournamentName || `${teamA.name} vs ${teamB.name}`}
+                    </h3>
+                    <div className="space-y-0.5 text-xs font-bold text-slate-300">
+                      <div className="flex justify-between gap-2"><span className="break-words">{teamA.name}</span><span className="font-mono shrink-0 text-slate-400">{scoreOf(teamA.id)}</span></div>
+                      <div className="flex justify-between gap-2"><span className="break-words">{teamB.name}</span><span className="font-mono shrink-0 text-slate-400">{scoreOf(teamB.id)}</span></div>
+                    </div>
+                  </div>
+                  <div className="px-3.5 py-2 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end gap-1.5">
+                    <button
+                      onClick={() => {
+                        handleScorecard(m);
+                        cricketAudio.playClick();
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    >
+                      <Eye className="w-3 h-3 text-cyan-400" />
+                      <span>Scorecard</span>
+                    </button>
+                    {canResume && (
+                      <button
+                        onClick={() => resumeMatch(m)}
+                        className="px-3.5 py-1.5 rounded-lg text-[11px] font-black shadow-md transition flex items-center gap-1 cursor-pointer active:scale-95 bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950"
+                      >
+                        <Play className="w-3 h-3 fill-current" />
+                        <span>Resume Match</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Section 2: Tournaments & League Preview */}
       <div className="space-y-3.5">
         <div className="flex items-center justify-between">
@@ -592,7 +715,7 @@ export const LiveFeedView: React.FC<LiveFeedViewProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {tournaments.slice(0, 3).map((tour) => {
             const tourMatches = allMatches.filter((m) => m.tournamentId === tour.id);
-            const liveTourMatches = tourMatches.filter((m) => m.status === 'live');
+            const liveTourMatches = tourMatches.filter((m) => m.status === 'live' && !isPausedMatch(m));
             const completedTourMatches = tourMatches.filter((m) => m.status === 'completed');
 
             const champion = teams.find(

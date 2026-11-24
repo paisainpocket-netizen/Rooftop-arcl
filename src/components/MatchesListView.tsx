@@ -23,6 +23,7 @@ import {
 import { cricketAudio } from '../utils/audio';
 import { ShareMatchCard } from './ShareMatchCard';
 import { MatchMomModal } from './MatchMomModal';
+import { MatchPostersModal } from './MatchPostersModal';
 
 
 // ---------------------------------------------------------------------------
@@ -188,6 +189,7 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
   // Which match's "Share Squad / Poster" modal is currently open (null = closed)
   const [shareMatch, setShareMatch] = useState<Match | null>(null);
   const [momMatch, setMomMatch] = useState<Match | null>(null);
+  const [posterMatch, setPosterMatch] = useState<{ match: Match; mode: 'graph' | 'card' } | null>(null);
   const [tieMatch, setTieMatch] = useState<Match | null>(null);
 
   const isUserAdmin = Boolean(
@@ -739,6 +741,33 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
                       </button>
                     </div>
                   )}
+
+                  {isCompleted && (m.innings1?.balls?.length || 0) + (m.innings2?.balls?.length || 0) > 0 && (
+                    <div className="flex items-center gap-1.5 pt-1.5">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cricketAudio.playClick();
+                          setPosterMatch({ match: m, mode: 'graph' });
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-blue-500/15 border border-blue-500/40 text-blue-200 text-[10px] font-black hover:bg-blue-500/25 transition"
+                      >
+                        <span>📈</span>
+                        <span>Run Graph</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          cricketAudio.playClick();
+                          setPosterMatch({ match: m, mode: 'card' });
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded-lg bg-orange-500/15 border border-orange-500/40 text-orange-200 text-[10px] font-black hover:bg-orange-500/25 transition"
+                      >
+                        <span>🧾</span>
+                        <span>Scorecard Poster</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Footer: creator + primary action */}
@@ -880,6 +909,14 @@ export const MatchesListView: React.FC<MatchesListViewProps> = ({
         </div>
       )}
       {momMatch && <MatchMomModal isOpen={true} onClose={() => setMomMatch(null)} match={momMatch} />}
+      {posterMatch && (
+        <MatchPostersModal
+          isOpen={true}
+          onClose={() => setPosterMatch(null)}
+          match={posterMatch.match}
+          initialMode={posterMatch.mode}
+        />
+      )}
       {shareMatch && (
         <ShareMatchCard
           isOpen={true}
