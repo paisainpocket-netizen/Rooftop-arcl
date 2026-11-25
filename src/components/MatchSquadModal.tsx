@@ -101,6 +101,10 @@ export const MatchSquadModal: React.FC<MatchSquadModalProps> = ({
 
   if (!isOpen) return null;
 
+  // Photo: take the latest from the player's own record; fall back to the copy saved in the team
+  const photoOf = (p: Player): string | undefined =>
+    allGlobalPlayers.find((g) => g.id === p.id)?.avatar || p.avatar;
+
   const currentTeam: Team = activeTab === 'teamA' ? match.teamA : match.teamB;
   const currentSquad = activeTab === 'teamA' ? selectedSquadA : selectedSquadB;
   const setSquad = activeTab === 'teamA' ? setSelectedSquadA : setSelectedSquadB;
@@ -438,8 +442,8 @@ export const MatchSquadModal: React.FC<MatchSquadModalProps> = ({
 
                     {/* Circular Avatar */}
                     <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-800 border border-slate-700 shrink-0 flex items-center justify-center text-sm font-bold text-white shadow-sm">
-                      {p.avatar ? (
-                        <img src={p.avatar} alt="" className="w-full h-full object-cover" />
+                      {photoOf(p) ? (
+                        <img src={photoOf(p)} alt="" className="w-full h-full object-cover" />
                       ) : (
                         <span>{p.name.charAt(0).toUpperCase()}</span>
                       )}
