@@ -51,6 +51,7 @@ const ROWS: Row[] = [
     show: (s) => `${num(s.highestScore)}${s.highestScoreNotOut ? '*' : ''}`,
   },
   { label: 'Fifties', value: (s) => num(s.fifties), show: (s) => String(num(s.fifties)) },
+  { label: 'Hundreds', value: (s) => num(s.centuries), show: (s) => String(num(s.centuries)) },
   { label: 'Sixes', value: (s) => num(s.sixes), show: (s) => String(num(s.sixes)) },
   { label: 'Wickets', value: (s) => num(s.wickets), show: (s) => String(num(s.wickets)) },
   {
