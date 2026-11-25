@@ -241,36 +241,60 @@ interface Series {
   pts: [number, number][]; // [overs, cumulative runs]
   wk: [number, number][]; // wicket positions
   score: string;
+  splits: [number, number][]; // where a later innings of the same team starts (Test matches)
 }
 
+// One line per TEAM. In a Test match the team's 2nd innings continues the same line
+// (overs and runs keep adding up), with a small dotted marker where it starts.
 function buildSeries(match: any): { a: Series; b: Series; maxOvers: number; bestOver: number } | null {
-  const list = [match?.innings1, match?.innings2].filter((i) => i && (i.balls || []).length > 0);
-  if (list.length < 2) return null;
+  const inns = inningsList(match).filter((i) => (i.balls || []).length > 0);
+  if (inns.length < 2) return null;
+  const teamOrder: string[] = [];
+  inns.forEach((i) => {
+    if (!teamOrder.includes(i.teamId)) teamOrder.push(i.teamId);
+  });
+  if (teamOrder.length < 2) return null;
   let bestOver = 0;
-  const make = (inn: any): Series => {
+  const make = (teamId: string): Series => {
+    const mine = inns.filter((i) => i.teamId === teamId);
     const pts: [number, number][] = [[0, 0]];
     const wk: [number, number][] = [];
+    const splits: [number, number][] = [];
     let runs = 0;
     let legal = 0;
-    const overRuns: Record<number, number> = {};
-    (inn.balls || []).forEach((b: any) => {
-      const r = n(b.runsBat) + n(b.extraRuns);
-      runs += r;
-      overRuns[Math.floor(legal / 6)] = (overRuns[Math.floor(legal / 6)] || 0) + r;
-      if (b.isLegalDelivery) legal += 1;
-      const ov = legal / 6;
-      pts.push([ov, runs]);
-      if (b.isWicket && !NOT_COUNTED_WICKET.includes(b.wicketType)) wk.push([ov, runs]);
+    mine.forEach((inn, idx) => {
+      if (idx > 0) splits.push([legal / 6, runs]);
+      const overRuns: Record<number, number> = {};
+      let innLegal = 0;
+      (inn.balls || []).forEach((b: any) => {
+        const r = n(b.runsBat) + n(b.extraRuns);
+        runs += r;
+        overRuns[Math.floor(innLegal / 6)] = (overRuns[Math.floor(innLegal / 6)] || 0) + r;
+        if (b.isLegalDelivery) {
+          legal += 1;
+          innLegal += 1;
+        }
+        const ov = legal / 6;
+        pts.push([ov, runs]);
+        if (b.isWicket && !NOT_COUNTED_WICKET.includes(b.wicketType)) wk.push([ov, runs]);
+      });
+      Object.values(overRuns).forEach((v) => {
+        if (v > bestOver) bestOver = v;
+      });
     });
-    Object.values(overRuns).forEach((v) => {
-      if (v > bestOver) bestOver = v;
-    });
-    return { name: inn.teamName || 'Team', pts, wk, score: `${n(inn.totalRuns)}-${n(inn.totalWickets)}` };
+    return {
+      name: mine[0]?.teamName || 'Team',
+      pts,
+      wk,
+      splits,
+      score: mine.map((i) => `${n(i.totalRuns)}-${n(i.totalWickets)}`).join(' & '),
+    };
   };
-  const a = make(list[0]);
-  const b = make(list[1]);
+  const a = make(teamOrder[0]);
+  const b = make(teamOrder[1]);
   const seen = Math.max(a.pts[a.pts.length - 1][0], b.pts[b.pts.length - 1][0]);
-  const maxOvers = Math.max(n(match.totalOvers), Math.ceil(seen), 1);
+  const isTest = inns.length > 2;
+  const maxOvers = Math.max(n(match.totalOvers) * (isTest ? 2 : 1), Math.ceil(seen), 1);
   return { a, b, maxOvers, bestOver };
 }
 
@@ -358,6 +382,23 @@ function drawGraph(match: any): HTMLCanvasElement {
       x.stroke();
     });
   };
+  const splitMark = (sr: Series, col: string) => {
+    sr.splits.forEach((p) => {
+      x.save();
+      x.setLineDash([8, 8]);
+      x.strokeStyle = col;
+      x.globalAlpha = 0.55;
+      x.lineWidth = 2;
+      x.beginPath();
+      x.moveTo(px(p[0]), py(p[1]));
+      x.lineTo(px(p[0]), B);
+      x.stroke();
+      x.restore();
+      text('INN 2', px(p[0]), B - 10, '700 16px sans-serif', col);
+    });
+  };
+  splitMark(a, '#60a5fa');
+  splitMark(b, '#fb923c');
   line(a, '#60a5fa');
   line(b, '#fb923c');
   x.beginPath();
