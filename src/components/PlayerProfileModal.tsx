@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Player, Match, Team, PlayerStats } from '../types/cricket';
 import {
   User,
@@ -23,6 +23,8 @@ import {
 import { cricketAudio } from '../utils/audio';
 import { PlayerShareCardModal } from './PlayerShareCardModal';
 import { PlayerCompareModal } from './PlayerCompareModal';
+import { SeasonPosterModal } from './SeasonPosterModal';
+import { computeSeasons, SeasonRow } from '../utils/seasonStats';
 import { PlayerBadges } from './PlayerBadges';
 
 interface PlayerProfileModalProps {
@@ -117,100 +119,6 @@ const SectionCard: React.FC<{ title: string; hint?: string; children: React.Reac
   </div>
 );
 
-// ---------- Season-wise stats ----------
-// A "season" is one tournament. Everything is worked out on screen from the matches already
-// loaded in the app, so nothing extra is saved and no extra reads are made.
-interface SeasonRow {
-  key: string;
-  name: string;
-  lastAt: number;
-  matches: number;
-  innings: number;
-  runs: number;
-  balls: number;
-  fours: number;
-  sixes: number;
-  timesOut: number;
-  highest: number;
-  highestNotOut: boolean;
-  fifties: number;
-  hundreds: number;
-  wickets: number;
-  legalBalls: number;
-  runsConceded: number;
-  bestW: number;
-  bestR: number;
-  average: number;
-  strikeRate: number;
-  economy: number;
-}
-
-function computeSeasons(items: { match: Match }[], playerId: string): SeasonRow[] {
-  const map = new Map<string, SeasonRow>();
-  items.forEach(({ match: m }) => {
-    if (m.status !== 'completed') return;
-    const key = m.tournamentId || '__friendly__';
-    let row = map.get(key);
-    if (!row) {
-      row = {
-        key,
-        name: m.tournamentName || 'Friendly Matches',
-        lastAt: 0,
-        matches: 0, innings: 0, runs: 0, balls: 0, fours: 0, sixes: 0, timesOut: 0,
-        highest: 0, highestNotOut: false, fifties: 0, hundreds: 0,
-        wickets: 0, legalBalls: 0, runsConceded: 0, bestW: 0, bestR: 0,
-        average: 0, strikeRate: 0, economy: 0,
-      };
-      map.set(key, row);
-    }
-    row.matches += 1;
-    const t = Number(m.updatedAt) || Date.parse(m.date || '') || 0;
-    if (t > row.lastAt) row.lastAt = t;
-
-    [m.innings1, m.innings2, m.innings3, m.innings4].forEach((inn) => {
-      if (!inn) return;
-      const bat: any = inn.battingStats?.[playerId];
-      if (bat) {
-        const r = bat.runs || 0;
-        row!.innings += 1;
-        row!.runs += r;
-        row!.balls += bat.balls || 0;
-        row!.fours += bat.fours || 0;
-        row!.sixes += bat.sixes || 0;
-        if (bat.isOut) row!.timesOut += 1;
-        if (r >= 100) row!.hundreds += 1;
-        else if (r >= 50) row!.fifties += 1;
-        if (r > row!.highest) {
-          row!.highest = r;
-          row!.highestNotOut = !bat.isOut;
-        } else if (r === row!.highest && !bat.isOut) {
-          row!.highestNotOut = true;
-        }
-      }
-      const bowl: any = inn.bowlingStats?.[playerId];
-      if (bowl) {
-        const w = bowl.wickets || 0;
-        const rc = bowl.runs ?? bowl.runsConceded ?? 0;
-        row!.wickets += w;
-        row!.legalBalls += (bowl.overs || 0) * 6 + (bowl.balls || 0);
-        row!.runsConceded += rc;
-        if (w > row!.bestW || (w === row!.bestW && w > 0 && rc < row!.bestR)) {
-          row!.bestW = w;
-          row!.bestR = rc;
-        }
-      }
-    });
-  });
-
-  const rows = Array.from(map.values());
-  rows.forEach((r) => {
-    r.average = r.timesOut > 0 ? r.runs / r.timesOut : r.runs;
-    r.strikeRate = r.balls > 0 ? (r.runs / r.balls) * 100 : 0;
-    r.economy = r.legalBalls > 0 ? r.runsConceded / (r.legalBalls / 6) : 0;
-  });
-  return rows.sort((a, b) => b.lastAt - a.lastAt);
-}
-
 export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   isOpen,
   onClose,
@@ -231,6 +139,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [showShareCard, setShowShareCard] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  // Season poster: null = closed; {season: row} = one season; {season: null} = all seasons
+  const [seasonPoster, setSeasonPoster] = useState<{ season: SeasonRow | null } | null>(null);
+  // Seasons ticked for the "Season by Season" poster (max 8)
+  const [pickedSeasons, setPickedSeasons] = useState<string[]>([]);
+  useEffect(() => {
+    setPickedSeasons([]);
+  }, [player.id]);
   const [rebuildMsg, setRebuildMsg] = useState('');
 
   if (!isOpen) return null;
@@ -294,6 +209,21 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const bestBowlSeason = seasonRows
     .filter((s) => s.wickets > 0)
     .sort((a, b) => b.wickets - a.wickets || a.economy - b.economy)[0];
+
+  const seasonRunsTotal = seasonRows.reduce((a, r) => a + r.runs, 0);
+  const MAX_PICKED_SEASONS = 8;
+  const pickedRows = seasonRows.filter((r) => pickedSeasons.includes(r.key));
+  const togglePickedSeason = (key: string) => {
+    cricketAudio.playClick();
+    setPickedSeasons((prev) => {
+      if (prev.includes(key)) return prev.filter((k) => k !== key);
+      if (prev.filter((k) => seasonRows.some((r) => r.key === k)).length >= MAX_PICKED_SEASONS) {
+        alert(`Ek poster mein zyada se zyada ${MAX_PICKED_SEASONS} seasons chun sakte ho.`);
+        return prev;
+      }
+      return [...prev, key];
+    });
+  };
 
   const handleCopyProfileId = () => {
     cricketAudio.playClick();
@@ -599,66 +529,89 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
                   {/* SEASONS */}
                   {statsSubTab === 'seasons' && (
-                    <div className="space-y-4">
+                    <div className="space-y-3">
                       {seasonRows.length === 0 ? (
                         <div className="text-center py-8 text-slate-500 text-xs">
                           No completed tournament matches for {fmtName}.
                         </div>
                       ) : (
                         <>
-                          <div className="grid grid-cols-3 gap-2">
-                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
-                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Latest</div>
-                              <div className="mt-1 text-xl font-black font-mono leading-none text-white">{seasonRows[0].runs}</div>
-                              <div className="mt-1 text-[10px] text-slate-500 truncate">{seasonRows[0].name}</div>
-                            </div>
-                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
-                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Best Bat</div>
-                              <div className="mt-1 text-xl font-black font-mono leading-none text-amber-300">{bestBatSeason ? bestBatSeason.runs : '-'}</div>
-                              <div className="mt-1 text-[10px] text-slate-500 truncate">{bestBatSeason ? bestBatSeason.name : 'No runs yet'}</div>
-                            </div>
-                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
-                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Best Bowl</div>
-                              <div className="mt-1 text-xl font-black font-mono leading-none text-emerald-300">{bestBowlSeason ? bestBowlSeason.wickets : '-'}</div>
-                              <div className="mt-1 text-[10px] text-slate-500 truncate">{bestBowlSeason ? bestBowlSeason.name : 'No wickets yet'}</div>
-                            </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              cricketAudio.playClick();
+                              setSeasonPoster({ season: null });
+                            }}
+                            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-90 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                            <span>
+                              {pickedRows.length > 0
+                                ? `Share Selected Seasons (${pickedRows.length})`
+                                : `Share All Seasons (${seasonRows.length})`}
+                            </span>
+                          </button>
+
+                          <p className="text-[11px] text-slate-500 px-1 -mt-1">
+                            {pickedRows.length > 0
+                              ? 'Poster mein sirf tick kiye hue seasons aayenge (max 8).'
+                              : 'Poster ke liye seasons tick karo (max 8). Kuch tick nahi kiya to sabse naye 7 aayenge.'}
+                          </p>
+
+                          <div className="max-h-[28rem] overflow-y-auto space-y-2 pr-0.5">
+                            {seasonRows.map((s) => {
+                              const isBestBat = bestBatSeason && s.key === bestBatSeason.key;
+                              const isBestBowl = bestBowlSeason && s.key === bestBowlSeason.key;
+                              return (
+                                <div key={s.key} className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2.5">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <label className="flex items-start gap-2.5 min-w-0 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={pickedSeasons.includes(s.key)}
+                                        onChange={() => togglePickedSeason(s.key)}
+                                        className="mt-0.5 w-5 h-5 shrink-0 accent-emerald-500 cursor-pointer"
+                                      />
+                                    <div className="min-w-0">
+                                      <div className="font-bold text-sm text-white leading-snug break-words">{s.name}</div>
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {isBestBat && (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">Best Batting</span>
+                                        )}
+                                        {isBestBowl && (
+                                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-300 border border-orange-500/30">Best Bowling</span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        cricketAudio.playClick();
+                                        setSeasonPoster({ season: s });
+                                      }}
+                                      className="shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold cursor-pointer"
+                                    >
+                                      <Share2 className="w-3 h-3" />
+                                      <span>Share</span>
+                                    </button>
+                                  </div>
+                                  <div className="grid grid-cols-4 gap-2">
+                                    <StatTile label="Matches" value={s.matches} />
+                                    <StatTile label="Runs" value={s.runs} accent="text-amber-300" />
+                                    <StatTile label="Wickets" value={s.wickets} accent="text-emerald-300" />
+                                    <StatTile label="Best" value={s.innings ? `${s.highest}${s.highestNotOut ? '*' : ''}` : '-'} />
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
 
-                          <SectionCard title="All Seasons" hint={`${seasonRows.length} · newest first`}>
-                            <div className="max-h-80 overflow-y-auto overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
-                              <table className="w-full text-xs text-left whitespace-nowrap">
-                                <thead className="sticky top-0 bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
-                                  <tr>
-                                    <th className="py-2 px-3">Season</th>
-                                    <th className="py-2 px-2 text-center">Mat</th>
-                                    <th className="py-2 px-2 text-center">Runs</th>
-                                    <th className="py-2 px-2 text-center">HS</th>
-                                    <th className="py-2 px-2 text-center">Avg</th>
-                                    <th className="py-2 px-2 text-center">SR</th>
-                                    <th className="py-2 px-2 text-center">Wkts</th>
-                                    <th className="py-2 px-2 text-center">Econ</th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-800/60 font-mono">
-                                  {seasonRows.map((s) => (
-                                    <tr key={s.key}>
-                                      <td className="py-2 px-3 font-sans font-bold text-white max-w-[140px] truncate">{s.name}</td>
-                                      <td className="py-2 px-2 text-center text-slate-300">{s.matches}</td>
-                                      <td className="py-2 px-2 text-center text-amber-300 font-bold">{s.runs}</td>
-                                      <td className="py-2 px-2 text-center text-slate-200">{s.innings ? `${s.highest}${s.highestNotOut ? '*' : ''}` : '-'}</td>
-                                      <td className="py-2 px-2 text-center text-slate-200">{s.innings ? s.average.toFixed(1) : '-'}</td>
-                                      <td className="py-2 px-2 text-center text-slate-200">{s.balls ? s.strikeRate.toFixed(1) : '-'}</td>
-                                      <td className="py-2 px-2 text-center text-emerald-300 font-bold">{s.wickets}</td>
-                                      <td className="py-2 px-2 text-center text-slate-200">{s.legalBalls ? s.economy.toFixed(1) : '-'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </SectionCard>
-                          <p className="text-[11px] text-slate-500 px-1">
-                            Only completed matches loaded in the app are counted. Career totals above come from the player's saved stats.
-                          </p>
+                          {seasonRunsTotal < (currentStats.runs || 0) && (
+                            <p className="text-[11px] text-amber-300/80 px-1">
+                              Kuch purane matches app mein load nahi hue, isliye seasons ke runs ({seasonRunsTotal}) career ke runs ({currentStats.runs}) se kam hain.
+                            </p>
+                          )}
                         </>
                       )}
                     </div>
@@ -884,6 +837,18 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           onClose={() => setShowCompare(false)}
           playerA={player}
           players={allPlayers}
+        />
+      )}
+
+      {seasonPoster && (
+        <SeasonPosterModal
+          isOpen={!!seasonPoster}
+          onClose={() => setSeasonPoster(null)}
+          player={player}
+          season={seasonPoster.season}
+          seasons={pickedRows.length > 0 ? pickedRows : seasonRows}
+          limit={pickedRows.length > 0 ? MAX_PICKED_SEASONS : 7}
+          fmtName={fmtName}
         />
       )}
 
