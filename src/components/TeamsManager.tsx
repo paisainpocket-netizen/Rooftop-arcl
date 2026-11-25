@@ -57,6 +57,10 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
   onOpenScorecard,
   isDarkMode,
 }) => {
+  // Photo: take the latest from the player's own record; fall back to the copy saved in the team
+  const photoOf = (p: Player): string | undefined =>
+    allPlayers.find((g) => g.id === p.id)?.avatar || p.avatar;
+
   const [tabFilter, setTabFilter] = useState<'my' | 'public'>(() => (loggedInPlayer ? 'my' : 'public'));
   const [selectedTeamId, setSelectedTeamId] = useState<string>(teams[0]?.id || '');
   
@@ -199,23 +203,54 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
     setEditTeamLogoUrl(t.logoUrl || '');
   };
 
+  // Shrinks the chosen logo before it is stored (about 256px, a few KB) so team documents stay
+  // small and every phone loads them fast. WebP keeps a transparent background; phones that
+  // cannot make WebP automatically get a small PNG instead.
+  const compressLogo = (file: File, maxDim = 256, quality = 0.8): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('read failed'));
+      reader.onload = () => {
+        const img = new window.Image();
+        img.onerror = () => reject(new Error('image failed'));
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+            const w = Math.max(1, Math.round(img.width * scale));
+            const h = Math.max(1, Math.round(img.height * scale));
+            const canvas = document.createElement('canvas');
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('no canvas');
+            ctx.drawImage(img, 0, 0, w, h);
+            resolve(canvas.toDataURL('image/webp', quality));
+          } catch (err) {
+            reject(err);
+          }
+        };
+        img.src = reader.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+
   const handleTeamLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Logo image should be under 2MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('Logo image is too big. Please choose a photo under 10MB.');
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      if (event.target?.result) {
-        setEditTeamLogoUrl(event.target.result as string);
+    compressLogo(file)
+      .then((dataUrl) => {
+        setEditTeamLogoUrl(dataUrl);
         cricketAudio.playClick('Logo uploaded');
-      }
-    };
-    reader.readAsDataURL(file);
+      })
+      .catch(() => {
+        alert('Could not read this image. Please try another photo.');
+      });
   };
 
   const handleSaveTeamEdit = (e: React.FormEvent) => {
@@ -658,8 +693,8 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                           {idx + 1}
                         </div>
                         <div className="w-10 h-10 rounded-full overflow-hidden bg-slate-800 border border-slate-700 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                          {p.avatar ? (
-                            <img src={p.avatar} alt="" className="w-full h-full object-cover" />
+                          {photoOf(p) ? (
+                            <img src={photoOf(p)} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <span>{p.name.charAt(0).toUpperCase()}</span>
                           )}
@@ -952,7 +987,7 @@ export const TeamsManager: React.FC<TeamsManagerProps> = ({
                 <label className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-800 hover:border-emerald-500/50 bg-slate-950 flex flex-col items-center justify-center gap-1 cursor-pointer transition">
                   <ImageIcon className="w-4 h-4 text-slate-400" />
                   <span className="text-[11px] font-bold text-slate-300">Upload Custom Team Logo</span>
-                  <span className="text-[9px] text-slate-500">Supports JPG, PNG (Max 2MB)</span>
+                  <span className="text-[9px] text-slate-500">Photo is auto-resized to a small size</span>
                   <input type="file" accept="image/*" onChange={handleTeamLogoUpload} className="hidden" />
                 </label>
               )}
