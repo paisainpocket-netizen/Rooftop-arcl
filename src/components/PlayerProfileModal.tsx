@@ -117,6 +117,100 @@ const SectionCard: React.FC<{ title: string; hint?: string; children: React.Reac
   </div>
 );
 
+// ---------- Season-wise stats ----------
+// A "season" is one tournament. Everything is worked out on screen from the matches already
+// loaded in the app, so nothing extra is saved and no extra reads are made.
+interface SeasonRow {
+  key: string;
+  name: string;
+  lastAt: number;
+  matches: number;
+  innings: number;
+  runs: number;
+  balls: number;
+  fours: number;
+  sixes: number;
+  timesOut: number;
+  highest: number;
+  highestNotOut: boolean;
+  fifties: number;
+  hundreds: number;
+  wickets: number;
+  legalBalls: number;
+  runsConceded: number;
+  bestW: number;
+  bestR: number;
+  average: number;
+  strikeRate: number;
+  economy: number;
+}
+
+function computeSeasons(items: { match: Match }[], playerId: string): SeasonRow[] {
+  const map = new Map<string, SeasonRow>();
+  items.forEach(({ match: m }) => {
+    if (m.status !== 'completed') return;
+    const key = m.tournamentId || '__friendly__';
+    let row = map.get(key);
+    if (!row) {
+      row = {
+        key,
+        name: m.tournamentName || 'Friendly Matches',
+        lastAt: 0,
+        matches: 0, innings: 0, runs: 0, balls: 0, fours: 0, sixes: 0, timesOut: 0,
+        highest: 0, highestNotOut: false, fifties: 0, hundreds: 0,
+        wickets: 0, legalBalls: 0, runsConceded: 0, bestW: 0, bestR: 0,
+        average: 0, strikeRate: 0, economy: 0,
+      };
+      map.set(key, row);
+    }
+    row.matches += 1;
+    const t = Number(m.updatedAt) || Date.parse(m.date || '') || 0;
+    if (t > row.lastAt) row.lastAt = t;
+
+    [m.innings1, m.innings2, m.innings3, m.innings4].forEach((inn) => {
+      if (!inn) return;
+      const bat: any = inn.battingStats?.[playerId];
+      if (bat) {
+        const r = bat.runs || 0;
+        row!.innings += 1;
+        row!.runs += r;
+        row!.balls += bat.balls || 0;
+        row!.fours += bat.fours || 0;
+        row!.sixes += bat.sixes || 0;
+        if (bat.isOut) row!.timesOut += 1;
+        if (r >= 100) row!.hundreds += 1;
+        else if (r >= 50) row!.fifties += 1;
+        if (r > row!.highest) {
+          row!.highest = r;
+          row!.highestNotOut = !bat.isOut;
+        } else if (r === row!.highest && !bat.isOut) {
+          row!.highestNotOut = true;
+        }
+      }
+      const bowl: any = inn.bowlingStats?.[playerId];
+      if (bowl) {
+        const w = bowl.wickets || 0;
+        const rc = bowl.runs ?? bowl.runsConceded ?? 0;
+        row!.wickets += w;
+        row!.legalBalls += (bowl.overs || 0) * 6 + (bowl.balls || 0);
+        row!.runsConceded += rc;
+        if (w > row!.bestW || (w === row!.bestW && w > 0 && rc < row!.bestR)) {
+          row!.bestW = w;
+          row!.bestR = rc;
+        }
+      }
+    });
+  });
+
+  const rows = Array.from(map.values());
+  rows.forEach((r) => {
+    r.average = r.timesOut > 0 ? r.runs / r.timesOut : r.runs;
+    r.strikeRate = r.balls > 0 ? (r.runs / r.balls) * 100 : 0;
+    r.economy = r.legalBalls > 0 ? r.runsConceded / (r.legalBalls / 6) : 0;
+  });
+  return rows.sort((a, b) => b.lastAt - a.lastAt);
+}
+
 export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   isOpen,
   onClose,
@@ -131,7 +225,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   allPlayers,
 }) => {
   const [activeTab, setActiveTab] = useState<'statistics' | 'formats' | 'overview' | 'matches' | 'teams'>('statistics');
-  const [statsSubTab, setStatsSubTab] = useState<'bat' | 'bowl' | 'field' | 'matchwise'>('bat');
+  const [statsSubTab, setStatsSubTab] = useState<'bat' | 'bowl' | 'field' | 'matchwise' | 'seasons'>('bat');
   const [selectedFormat, setSelectedFormat] = useState<MatchFormatKey>('all');
   const [copiedId, setCopiedId] = useState(false);
   const [showShareCard, setShowShareCard] = useState(false);
@@ -193,6 +287,13 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const filteredMatches = selectedFormat === 'all'
     ? playerMatchHistory
     : playerMatchHistory.filter((pm) => pm.formatKey === selectedFormat);
+
+  // Season-wise numbers (follows the selected format tab)
+  const seasonRows = computeSeasons(filteredMatches, player.id);
+  const bestBatSeason = seasonRows.filter((s) => s.runs > 0).sort((a, b) => b.runs - a.runs)[0];
+  const bestBowlSeason = seasonRows
+    .filter((s) => s.wickets > 0)
+    .sort((a, b) => b.wickets - a.wickets || a.economy - b.economy)[0];
 
   const handleCopyProfileId = () => {
     cricketAudio.playClick();
@@ -385,18 +486,18 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
 
                   {/* Sub tabs */}
                   <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                    {(['bat', 'bowl', 'field', 'matchwise'] as const).map((st) => (
+                    {(['bat', 'bowl', 'field', 'matchwise', 'seasons'] as const).map((st) => (
                       <button
                         key={st}
                         onClick={() => {
                           setStatsSubTab(st);
                           cricketAudio.playClick();
                         }}
-                        className={`flex-1 py-2 rounded-lg font-bold transition cursor-pointer ${
+                        className={`flex-1 py-2 px-1 rounded-lg font-bold text-[11px] sm:text-xs transition cursor-pointer ${
                           statsSubTab === st ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-200'
                         }`}
                       >
-                        {st === 'bat' ? 'Batting' : st === 'bowl' ? 'Bowling' : st === 'field' ? 'Fielding' : 'Match-wise'}
+                        {st === 'bat' ? 'Batting' : st === 'bowl' ? 'Bowling' : st === 'field' ? 'Fielding' : st === 'matchwise' ? 'Match-wise' : 'Seasons'}
                       </button>
                     ))}
                   </div>
@@ -492,6 +593,73 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                             </div>
                           </div>
                         ))
+                      )}
+                    </div>
+                  )}
+
+                  {/* SEASONS */}
+                  {statsSubTab === 'seasons' && (
+                    <div className="space-y-4">
+                      {seasonRows.length === 0 ? (
+                        <div className="text-center py-8 text-slate-500 text-xs">
+                          No completed tournament matches for {fmtName}.
+                        </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-3 gap-2">
+                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Latest</div>
+                              <div className="mt-1 text-xl font-black font-mono leading-none text-white">{seasonRows[0].runs}</div>
+                              <div className="mt-1 text-[10px] text-slate-500 truncate">{seasonRows[0].name}</div>
+                            </div>
+                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Best Bat</div>
+                              <div className="mt-1 text-xl font-black font-mono leading-none text-amber-300">{bestBatSeason ? bestBatSeason.runs : '-'}</div>
+                              <div className="mt-1 text-[10px] text-slate-500 truncate">{bestBatSeason ? bestBatSeason.name : 'No runs yet'}</div>
+                            </div>
+                            <div className="rounded-xl bg-slate-950 border border-slate-800 px-2 py-2.5 text-center min-w-0">
+                              <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Best Bowl</div>
+                              <div className="mt-1 text-xl font-black font-mono leading-none text-emerald-300">{bestBowlSeason ? bestBowlSeason.wickets : '-'}</div>
+                              <div className="mt-1 text-[10px] text-slate-500 truncate">{bestBowlSeason ? bestBowlSeason.name : 'No wickets yet'}</div>
+                            </div>
+                          </div>
+
+                          <SectionCard title="All Seasons" hint={`${seasonRows.length} · newest first`}>
+                            <div className="max-h-80 overflow-y-auto overflow-x-auto rounded-xl border border-slate-800 bg-slate-950">
+                              <table className="w-full text-xs text-left whitespace-nowrap">
+                                <thead className="sticky top-0 bg-slate-900 text-slate-400 uppercase text-[10px] tracking-wider border-b border-slate-800">
+                                  <tr>
+                                    <th className="py-2 px-3">Season</th>
+                                    <th className="py-2 px-2 text-center">Mat</th>
+                                    <th className="py-2 px-2 text-center">Runs</th>
+                                    <th className="py-2 px-2 text-center">HS</th>
+                                    <th className="py-2 px-2 text-center">Avg</th>
+                                    <th className="py-2 px-2 text-center">SR</th>
+                                    <th className="py-2 px-2 text-center">Wkts</th>
+                                    <th className="py-2 px-2 text-center">Econ</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800/60 font-mono">
+                                  {seasonRows.map((s) => (
+                                    <tr key={s.key}>
+                                      <td className="py-2 px-3 font-sans font-bold text-white max-w-[140px] truncate">{s.name}</td>
+                                      <td className="py-2 px-2 text-center text-slate-300">{s.matches}</td>
+                                      <td className="py-2 px-2 text-center text-amber-300 font-bold">{s.runs}</td>
+                                      <td className="py-2 px-2 text-center text-slate-200">{s.innings ? `${s.highest}${s.highestNotOut ? '*' : ''}` : '-'}</td>
+                                      <td className="py-2 px-2 text-center text-slate-200">{s.innings ? s.average.toFixed(1) : '-'}</td>
+                                      <td className="py-2 px-2 text-center text-slate-200">{s.balls ? s.strikeRate.toFixed(1) : '-'}</td>
+                                      <td className="py-2 px-2 text-center text-emerald-300 font-bold">{s.wickets}</td>
+                                      <td className="py-2 px-2 text-center text-slate-200">{s.legalBalls ? s.economy.toFixed(1) : '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </SectionCard>
+                          <p className="text-[11px] text-slate-500 px-1">
+                            Only completed matches loaded in the app are counted. Career totals above come from the player's saved stats.
+                          </p>
+                        </>
                       )}
                     </div>
                   )}
