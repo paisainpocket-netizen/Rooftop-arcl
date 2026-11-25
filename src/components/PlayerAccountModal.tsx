@@ -297,6 +297,10 @@ export const PlayerAccountModal: React.FC<PlayerAccountModalProps> = ({
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file && loggedInPlayer) {
+      if (file.size > 15 * 1024 * 1024) {
+        alert('Photo bahut badi hai. Please 15MB se chhoti photo chuno.');
+        return;
+      }
       compressImage(file, 200, 0.75)
         .then((result) => {
           const updated: Player = {
@@ -312,24 +316,9 @@ export const PlayerAccountModal: React.FC<PlayerAccountModalProps> = ({
           setEditingPhoto(false);
         })
         .catch(() => {
-          // Fallback: if compression fails for any reason, still let the
-          // user set their photo using the original file.
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const result = reader.result as string;
-            const updated: Player = {
-              ...loggedInPlayer,
-              avatar: result,
-              isClaimed: true,
-            };
-            if (onUpdatePlayer) {
-              onUpdatePlayer(updated);
-            }
-            onLogin(updated);
-            cricketAudio.playClick('Profile photo updated');
-            setEditingPhoto(false);
-          };
-          reader.readAsDataURL(file);
+          // Never store the original big photo. If the phone cannot shrink it,
+          // ask the player to pick another one so the database stays small.
+          alert('Is photo ko chhota nahi kar paye. Please koi doosri photo chuno.');
         });
     }
   };
