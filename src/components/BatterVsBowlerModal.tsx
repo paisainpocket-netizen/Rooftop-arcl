@@ -24,7 +24,6 @@ const INNINGS_KEYS = ['innings1', 'innings2', 'innings3', 'innings4'];
 // dismissals that are not credited to the bowler
 const NOT_BOWLER_OUT = ['runout', 'retired_hurt', 'retired_out', 'retired', 'timed_out', 'obstructing_field'];
 const MIN_BALLS_RUNS_TAB = 6; // hide 1-2 ball matchups from the "Most Runs" list
-const PAGE = 10; // rows shown at first, and added by each "Show more"
 
 interface Pair {
   key: string;
@@ -228,6 +227,84 @@ function computeFinishers(pool: Match[]): Finisher[] {
   const rows = Array.from(map.values());
   rows.forEach((f) => f.list.sort((a, b) => b.at - a.at));
   return rows.sort((a, b) => b.finishes - a.finishes || b.runs - a.runs || b.notOut - a.notOut);
+}
+
+interface DefendItem {
+  matchId: string;
+  opp: string;
+  margin: string;
+  wickets: number;
+  runs: number;
+  balls: number;
+  at: number;
+}
+interface Defender {
+  id: string;
+  name: string;
+  defends: number;
+  wickets: number;
+  runs: number;
+  list: DefendItem[];
+}
+
+// A "defend" = the bowler of the LAST ball of a failed chase (the team batting first won).
+// If the chase ended all out, the last ball is the last wicket, so that bowler is credited.
+// Ties, draws and matches without a winner are skipped.
+function computeDefenders(pool: Match[]): Defender[] {
+  const map = new Map<string, Defender>();
+  pool.forEach((m: any) => {
+    if (m.status !== 'completed') return;
+    const winnerId = m.result?.winnerTeamId;
+    if (!winnerId || m.result?.isTie) return;
+    let inn: any = null;
+    for (let i = INNINGS_KEYS.length - 1; i >= 0; i--) {
+      const cand = m[INNINGS_KEYS[i]];
+      if (cand && Array.isArray(cand.balls) && cand.balls.length > 0) {
+        inn = cand;
+        break;
+      }
+    }
+    if (!inn || inn.teamId === winnerId) return; // the chase succeeded, nothing was defended
+    const last = inn.balls[inn.balls.length - 1];
+    if (!last || !last.bowlerId) return;
+    const id: string = last.bowlerId;
+
+    let wickets = 0;
+    let runs = 0;
+    let balls = 0;
+    inn.balls.forEach((b: any) => {
+      if (b.bowlerId !== id) return;
+      if (b.isLegalDelivery) balls += 1;
+      if (b.extraType !== 'bye' && b.extraType !== 'legBye') runs += (b.runsBat || 0) + (b.extraRuns || 0);
+      if (b.isWicket && !NOT_BOWLER_OUT.includes(b.wicketType)) wickets += 1;
+    });
+
+    const opp =
+      m.teamA && m.teamB ? (m.teamA.id === inn.teamId ? m.teamA.name : m.teamB.name) : m.name || 'Opponent';
+    const mr = m.result?.marginRuns;
+    const margin = typeof mr === 'number' ? `won by ${mr} run${mr === 1 ? '' : 's'}` : 'defended';
+
+    let d = map.get(id);
+    if (!d) {
+      d = { id, name: last.bowlerName || 'Bowler', defends: 0, wickets: 0, runs: 0, list: [] };
+      map.set(id, d);
+    }
+    d.defends += 1;
+    d.wickets += wickets;
+    d.runs += runs;
+    d.list.push({
+      matchId: m.id,
+      opp,
+      margin,
+      wickets,
+      runs,
+      balls,
+      at: Number(m.updatedAt) || Date.parse(m.date || '') || 0,
+    });
+  });
+  const rows = Array.from(map.values());
+  rows.forEach((d) => d.list.sort((a, b) => b.at - a.at));
+  return rows.sort((a, b) => b.defends - a.defends || b.wickets - a.wickets || a.runs - b.runs);
 }
 
 // ---------- posters ----------
@@ -558,9 +635,142 @@ function drawTopFinishers(
   return canvas;
 }
 
+function drawDefenderPoster(
+  scopeLine: string,
+  d: Defender,
+  team: string | undefined,
+  basedOn: number
+): HTMLCanvasElement {
+  const { canvas, x, text, fit, skew, header, footer, avatar } = makeCanvas('rgba(37,99,235,.55)', 'rgba(249,115,22,.45)');
+  header(scopeLine, 'THE DEFENDER', 92);
+  avatar(540, 350, 104, '#3b82f6', '#1d4ed8', d.name);
+  fit((d.name || '').toUpperCase(), 540, 520, 900, 54, '900', '#fff');
+  skew(566, () => {
+    x.fillStyle = '#1d4ed8';
+    x.fillRect(360, 544, 360, 36);
+  });
+  fit((team || 'ARCL').toUpperCase(), 540, 570, 320, 19, '800', '#fff', '');
+
+  const y = 640;
+  const gc = x.createLinearGradient(80, y, 1000, y + 210);
+  gc.addColorStop(0, '#2563eb');
+  gc.addColorStop(1, '#1e3a8a');
+  x.save();
+  x.shadowColor = '#3b82f6';
+  x.shadowBlur = 28;
+  x.fillStyle = gc;
+  x.beginPath();
+  x.roundRect(80, y, 920, 210, 30);
+  x.fill();
+  x.restore();
+  x.strokeStyle = 'rgba(255,255,255,.35)';
+  x.lineWidth = 2;
+  x.stroke();
+  text('DEFENDS', 540, y + 46, `900 24px ${PF}`, 'rgba(255,255,255,.9)');
+  text(String(d.defends), 540, y + 160, `italic 900 120px ${PF}`, '#fff');
+  text('bowled the last ball when the chase failed', 540, y + 196, `700 22px ${PF}`, 'rgba(255,255,255,.85)');
+
+  const minis: [string, string][] = [
+    ['WICKETS IN THOSE MATCHES', String(d.wickets)],
+    ['RUNS GIVEN IN THOSE MATCHES', String(d.runs)],
+  ];
+  minis.forEach((m, i) => {
+    const px = 80 + i * 470;
+    x.fillStyle = 'rgba(255,255,255,.07)';
+    x.beginPath();
+    x.roundRect(px, 880, 450, 120, 22);
+    x.fill();
+    x.strokeStyle = 'rgba(251,191,36,.5)';
+    x.lineWidth = 2;
+    x.stroke();
+    text(m[1], px + 225, 945, `italic 900 62px ${PF}`, '#fff');
+    fit(m[0], px + 225, 981, 400, 18, '800', '#fde68a', '');
+  });
+
+  text('RECENT DEFENDS', 100, 1050, `800 22px ${PF}`, '#fde68a', 'left');
+  d.list.slice(0, 3).forEach((it, i) => {
+    const ry = 1070 + i * 62;
+    skew(ry + 26, () => {
+      x.fillStyle = 'rgba(11,26,77,.95)';
+      x.fillRect(70, ry, 940, 52);
+      x.strokeStyle = 'rgba(251,191,36,.45)';
+      x.lineWidth = 2;
+      x.strokeRect(70, ry, 940, 52);
+    });
+    fit(`vs ${it.opp}  ·  ${it.margin}`, 100, ry + 34, 600, 24, '800', '#fff', '', 'left');
+    text(`${it.wickets} wkt${it.wickets === 1 ? '' : 's'} · ${it.runs} runs`, 985, ry + 36, `italic 900 26px ${PF}`, '#7dd3fc', 'right');
+  });
+
+  footer(`Based on ${basedOn} match${basedOn === 1 ? '' : 'es'} with ball-by-ball detail`);
+  return canvas;
+}
+
+function drawTopDefenders(
+  scopeLine: string,
+  rows: Defender[],
+  teamOf: Record<string, string> | undefined,
+  basedOn: number
+): HTMLCanvasElement {
+  const { canvas, x, text, fit, skew, header, footer } = makeCanvas('rgba(37,99,235,.55)', 'rgba(249,115,22,.45)');
+  header(scopeLine, 'TOP DEFENDERS', 92);
+  text('BOWLED THE LAST BALL WHEN THE CHASE FAILED', 540, 232, `700 22px ${PF}`, '#fde68a');
+
+  text('BOWLER', 130, 330, `800 20px ${PF}`, '#fde68a', 'left');
+  text('WICKETS', 760, 330, `800 20px ${PF}`, '#fde68a');
+  text('DEFENDS', 930, 330, `800 20px ${PF}`, '#fde68a');
+
+  rows.slice(0, 5).forEach((r, i) => {
+    const bh = 150;
+    const ry = 355 + i * 168;
+    const cy = ry + bh / 2;
+    skew(cy, () => {
+      const g = x.createLinearGradient(60, 0, 1020, 0);
+      g.addColorStop(0, 'rgba(59,130,246,.22)');
+      g.addColorStop(1, 'rgba(249,115,22,.2)');
+      x.fillStyle = '#0b1a4d';
+      x.fillRect(60, ry, 960, bh);
+      x.fillStyle = g;
+      x.fillRect(60, ry, 960, bh);
+      x.strokeStyle = i === 0 ? 'rgba(251,191,36,.9)' : 'rgba(251,191,36,.45)';
+      x.lineWidth = i === 0 ? 3 : 2;
+      x.strokeRect(60, ry, 960, bh);
+      x.fillStyle = '#2563eb';
+      x.fillRect(850, ry + 10, 150, bh - 20);
+    });
+    x.beginPath();
+    x.arc(110, cy, 26, 0, Math.PI * 2);
+    x.fillStyle = i < 3 ? '#f59e0b' : '#334155';
+    x.fill();
+    text(String(i + 1), 110, cy + 10, `900 28px ${PF}`, i < 3 ? '#111827' : '#e2e8f0');
+    const tm = teamOf?.[r.id];
+    fit(r.name.toUpperCase(), 160, tm ? cy - 6 : cy + 14, 480, 40, '900', '#fff', 'italic ', 'left');
+    if (tm) fit(tm.toUpperCase(), 160, cy + 36, 480, 22, '700', '#93c5fd', '', 'left');
+    text(String(r.wickets), 760, cy + 18, `italic 900 48px ${PF}`, 'rgba(255,255,255,.9)');
+    text(String(r.defends), 930, cy + 28, `italic 900 72px ${PF}`, '#fff');
+  });
+  footer(`Based on ${basedOn} match${basedOn === 1 ? '' : 'es'} with ball-by-ball detail`);
+  return canvas;
+}
+
 // ---------- screen ----------
-type Tab = 'out' | 'runs' | 'finish';
-type View = { kind: 'pair'; key: string } | { kind: 'finisher'; id: string } | { kind: 'top' } | null;
+type Tab = 'players' | 'finish' | 'defend';
+type View =
+  | { kind: 'pair'; key: string }
+  | { kind: 'finisher'; id: string }
+  | { kind: 'top' }
+  | { kind: 'defender'; id: string }
+  | { kind: 'topdef' }
+  | null;
+
+interface PlayerRow {
+  id: string;
+  name: string;
+  runs: number;
+  balls: number;
+  wickets: number;
+}
+
+const SHOW_FIRST = 3; // rows shown first in each part of a player's page
 
 export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   isOpen,
@@ -572,11 +782,13 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   teamOf,
 }) => {
   const [scope, setScope] = useState<'tournament' | 'all'>('tournament');
-  const [tab, setTab] = useState<Tab>('out');
+  const [tab, setTab] = useState<Tab>('players');
   const [view, setView] = useState<View>(null);
+  const [playerId, setPlayerId] = useState('');
+  const [showAllBat, setShowAllBat] = useState(false);
+  const [showAllBowl, setShowAllBowl] = useState(false);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
-  const [visible, setVisible] = useState(PAGE);
 
   const pool = useMemo(
     () => uniqueMatches(scope === 'all' ? allMatches : matches),
@@ -586,27 +798,42 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   const basedOn = useMemo(() => countWithDetail(pool), [pool]);
   const pairs = useMemo(() => (isOpen ? computePairs(pool) : []), [isOpen, pool]);
   const finishers = useMemo(() => (isOpen ? computeFinishers(pool) : []), [isOpen, pool]);
+  const defenders = useMemo(() => (isOpen ? computeDefenders(pool) : []), [isOpen, pool]);
+
+  const players = useMemo<PlayerRow[]>(() => {
+    const map = new Map<string, PlayerRow>();
+    const get = (id: string, name: string) => {
+      let r = map.get(id);
+      if (!r) {
+        r = { id, name, runs: 0, balls: 0, wickets: 0 };
+        map.set(id, r);
+      }
+      return r;
+    };
+    pairs.forEach((p) => {
+      const bat = get(p.batterId, p.batterName);
+      bat.runs += p.runs;
+      bat.balls += p.balls;
+      const bowl = get(p.bowlerId, p.bowlerName);
+      bowl.wickets += p.outs;
+    });
+    return Array.from(map.values()).sort(
+      (a, b) => b.runs - a.runs || b.wickets - a.wickets || a.name.localeCompare(b.name)
+    );
+  }, [pairs]);
+
+  const totalWickets = useMemo(() => pairs.reduce((a, p) => a + p.outs, 0), [pairs]);
 
   const needle = q.trim().toLowerCase();
-
-  const outList = useMemo(
-    () =>
-      pairs
-        .filter((p) => p.outs > 0)
-        .sort((a, b) => b.outs - a.outs || b.balls - a.balls || b.runs - a.runs),
-    [pairs]
-  );
-  const runsList = useMemo(
-    () =>
-      pairs
-        .filter((p) => p.runs > 0 && p.balls >= MIN_BALLS_RUNS_TAB)
-        .sort((a, b) => b.runs - a.runs || b.runs / Math.max(b.balls, 1) - a.runs / Math.max(a.balls, 1)),
-    [pairs]
-  );
-
-  const matchesNeedle = (...names: string[]) => !needle || names.some((n) => n.toLowerCase().includes(needle));
-  const shownPairs = (tab === 'out' ? outList : runsList).filter((p) => matchesNeedle(p.batterName, p.bowlerName));
+  const matchesNeedle = (name: string) => !needle || name.toLowerCase().includes(needle);
+  const shownPlayers = players.filter((p) => matchesNeedle(p.name));
   const shownFinishers = finishers.filter((f) => matchesNeedle(f.name));
+  const shownDefenders = defenders.filter((d) => matchesNeedle(d.name));
+
+  const sel = playerId ? players.find((p) => p.id === playerId) : undefined;
+  const byOuts = (a: Pair, b: Pair) => b.outs - a.outs || b.balls - a.balls || b.runs - a.runs;
+  const asBat = useMemo(() => pairs.filter((p) => p.batterId === playerId).sort(byOuts), [pairs, playerId]);
+  const asBowl = useMemo(() => pairs.filter((p) => p.bowlerId === playerId).sort(byOuts), [pairs, playerId]);
 
   const scopeLine = scope === 'all' ? 'All Tournaments' : `${tournamentName}${season ? '  ·  ' + season : ''}`;
 
@@ -629,11 +856,19 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
         if (!f) return '';
         return drawFinisherPoster(scopeLine, f, teamOf?.[f.id], basedOn).toDataURL('image/png');
       }
+      if (view.kind === 'defender') {
+        const d = defenders.find((x) => x.id === view.id);
+        if (!d) return '';
+        return drawDefenderPoster(scopeLine, d, teamOf?.[d.id], basedOn).toDataURL('image/png');
+      }
+      if (view.kind === 'topdef') {
+        return drawTopDefenders(scopeLine, defenders, teamOf, basedOn).toDataURL('image/png');
+      }
       return drawTopFinishers(scopeLine, finishers, teamOf, basedOn).toDataURL('image/png');
     } catch (e) {
       return '';
     }
-  }, [isOpen, view, pairs, finishers, scopeLine, teamOf, basedOn]);
+  }, [isOpen, view, pairs, finishers, defenders, scopeLine, teamOf, basedOn]);
 
   if (!isOpen) return null;
 
@@ -659,21 +894,39 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
     fileName = 'ARCL_Top_Finishers.png';
     shareTitle = 'Top Finishers';
     viewTitle = 'Top Finishers';
+  } else if (view?.kind === 'defender') {
+    const d = defenders.find((x) => x.id === view.id);
+    if (d) {
+      fileName = `ARCL_Defender_${safe(d.name)}.png`;
+      shareTitle = `${d.name} - The Defender`;
+      viewTitle = `${d.name} · The Defender`;
+    }
+  } else if (view?.kind === 'topdef') {
+    fileName = 'ARCL_Top_Defenders.png';
+    shareTitle = 'Top Defenders';
+    viewTitle = 'Top Defenders';
   }
 
   const changeScope = (s: 'tournament' | 'all') => {
     cricketAudio.playClick();
     setScope(s);
     setView(null);
+    setPlayerId('');
     setQ('');
-    setVisible(PAGE);
   };
   const changeTab = (t: Tab) => {
     cricketAudio.playClick();
     setTab(t);
     setView(null);
+    setPlayerId('');
     setQ('');
-    setVisible(PAGE);
+  };
+  const openPlayer = (id: string) => {
+    cricketAudio.playClick();
+    setPlayerId(id);
+    setShowAllBat(false);
+    setShowAllBowl(false);
+    setQ('');
   };
 
   const makeFile = (): File => {
@@ -720,7 +973,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
     <button
       key={t}
       onClick={() => changeTab(t)}
-      className={`px-3 py-1.5 rounded-full text-[11.5px] font-black cursor-pointer border whitespace-nowrap ${
+      className={`px-3.5 py-1.5 rounded-full text-[12px] font-black cursor-pointer border whitespace-nowrap ${
         tab === t
           ? 'bg-gradient-to-r from-orange-600 to-orange-500 text-white border-orange-500'
           : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-white'
@@ -732,23 +985,61 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
 
   const subtitle = view
     ? viewTitle
-    : tab === 'out'
-    ? 'Who got whom out, and how many runs were given'
-    : tab === 'runs'
-    ? 'Which batter scored the most off which bowler'
-    : 'On strike when the winning run was scored in a chase';
+    : tab === 'finish'
+    ? 'On strike when the winning run was scored in a chase'
+    : tab === 'defend'
+    ? 'Bowled the last ball when a chase failed'
+    : sel
+    ? 'Tap a row for its poster'
+    : 'Choose a player';
 
-  const outTypes = (p: Pair) => {
-    const parts: string[] = [];
-    if (p.bowled) parts.push(`Bowled ${p.bowled}`);
-    if (p.caught) parts.push(`Caught ${p.caught}`);
-    if (p.lbw) parts.push(`LBW ${p.lbw}`);
-    if (p.stumped) parts.push(`Stumped ${p.stumped}`);
-    if (p.hitwicket) parts.push(`Hit wicket ${p.hitwicket}`);
-    if (p.roofOut) parts.push(`Roof out ${p.roofOut}`);
-    if (p.otherOut) parts.push(`Other ${p.otherOut}`);
-    return parts.join(' · ');
-  };
+  // one row inside a player's page
+  const pairRow = (p: Pair, who: 'bat' | 'bowl') => (
+    <button
+      key={p.key}
+      onClick={() => {
+        cricketAudio.playClick();
+        setView({ kind: 'pair', key: p.key });
+      }}
+      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-2xl bg-slate-900 border border-slate-800 hover:border-orange-500 text-left cursor-pointer"
+    >
+      <span className="min-w-0">
+        <span className="block text-sm font-extrabold text-white truncate">{who === 'bat' ? p.bowlerName : p.batterName}</span>
+        <span className="block text-[11px] text-slate-400 mt-0.5">
+          {p.runs} runs{who === 'bowl' ? ' given' : ''} · {p.balls} balls
+        </span>
+      </span>
+      <span
+        className={`shrink-0 text-center min-w-[50px] px-2 py-1.5 rounded-xl ${
+          p.outs > 0 ? 'bg-gradient-to-b from-orange-600 to-orange-900' : 'bg-slate-900 border border-slate-800'
+        }`}
+      >
+        <span className={`block text-xl font-black italic leading-none ${p.outs > 0 ? 'text-white' : 'text-slate-500'}`}>{p.outs}</span>
+        <span className={`block text-[9px] font-extrabold tracking-widest mt-0.5 ${p.outs > 0 ? 'text-orange-200' : 'text-slate-600'}`}>OUT</span>
+      </span>
+    </button>
+  );
+
+  const part = (
+    title: string,
+    color: string,
+    rows: Pair[],
+    who: 'bat' | 'bowl',
+    all: boolean,
+    toggle: () => void,
+    empty: string
+  ) => (
+    <div className="space-y-2">
+      <div className={`text-[11px] font-black uppercase tracking-[0.14em] px-0.5 ${color}`}>{title}</div>
+      {rows.length === 0 && <div className="text-xs text-slate-500 px-1 py-2">{empty}</div>}
+      {(all ? rows : rows.slice(0, SHOW_FIRST)).map((p) => pairRow(p, who))}
+      {rows.length > SHOW_FIRST && (
+        <button onClick={toggle} className="w-full py-2 text-[12px] font-bold text-sky-300 cursor-pointer">
+          {all ? 'Show less' : `Show all ${rows.length}`}
+        </button>
+      )}
+    </div>
+  );
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/90 backdrop-blur-md flex items-start justify-center p-3 overflow-y-auto">
@@ -787,11 +1078,13 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
               </button>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto pb-0.5">
-              {tabBtn('out', 'Most Dismissals')}
-              {tabBtn('runs', 'Most Runs')}
-              {tabBtn('finish', 'Finishers')}
-            </div>
+            {!sel && (
+              <div className="flex gap-2">
+                {tabBtn('players', 'Players')}
+                {tabBtn('finish', 'Finishers')}
+                {tabBtn('defend', 'Defenders')}
+              </div>
+            )}
 
             {missing > 0 && (
               <div className="px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 text-[10px] text-amber-200 leading-snug">
@@ -799,159 +1092,220 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
               </div>
             )}
 
+            {/* ---------- Players: list ---------- */}
+            {tab === 'players' && !sel && (
+              <>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search player"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div className="max-h-[62vh] overflow-y-auto space-y-1.5 pr-0.5">
+                  {shownPlayers.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => openPlayer(p.id)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:border-emerald-500 text-left cursor-pointer"
+                    >
+                      <span className="min-w-0">
+                        <span className="block text-sm font-black text-white truncate">{p.name}</span>
+                        {teamOf?.[p.id] && <span className="block text-[10px] text-slate-500 truncate">{teamOf[p.id]}</span>}
+                      </span>
+                      <span className="text-[11px] font-bold text-right shrink-0 leading-snug">
+                        <span className="block text-emerald-300">
+                          {p.runs} runs · {p.balls} balls
+                        </span>
+                        <span className="block text-orange-300">
+                          {p.wickets} wicket{p.wickets === 1 ? '' : 's'}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                  {shownPlayers.length === 0 && (
+                    <div className="text-center text-xs text-slate-500 py-6">
+                      {players.length === 0 ? 'No ball-by-ball detail found yet.' : 'Nothing found.'}
+                    </div>
+                  )}
+                </div>
+                {players.length > 0 && (
+                  <div className="text-center text-[10px] text-slate-600">
+                    Tap a player to see his list · Wickets counted: {totalWickets} (from {basedOn} match{basedOn === 1 ? '' : 'es'}). Run outs and retired are not included.
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* ---------- Players: one player's page ---------- */}
+            {tab === 'players' && sel && (
+              <>
+                <button
+                  onClick={() => {
+                    cricketAudio.playClick();
+                    setPlayerId('');
+                  }}
+                  className="self-start text-[12px] font-bold text-sky-300 cursor-pointer"
+                >
+                  ← All players
+                </button>
+                <div className="px-4 py-3 rounded-2xl bg-gradient-to-br from-[#0f1b3d] to-[#0b1226] border border-[#1e2b55]">
+                  <div className="text-lg font-black text-white">{sel.name}</div>
+                  {teamOf?.[sel.id] && <div className="text-[11px] text-slate-400 mt-0.5">{teamOf[sel.id]}</div>}
+                </div>
+                {part(
+                  'As batsman · who got him out',
+                  'text-sky-300',
+                  asBat,
+                  'bat',
+                  showAllBat,
+                  () => setShowAllBat((v) => !v),
+                  'No balls faced yet.'
+                )}
+                {part(
+                  'As bowler · whom he got out',
+                  'text-orange-300',
+                  asBowl,
+                  'bowl',
+                  showAllBowl,
+                  () => setShowAllBowl((v) => !v),
+                  'No balls bowled yet.'
+                )}
+              </>
+            )}
+
+            {/* ---------- Finishers ---------- */}
             {tab === 'finish' && (
-              <div className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-200 leading-snug">
-                A Finish = the batter on strike when the winning run is scored in a successful chase. Works for T10, T20, Test (4th innings) and every format.
-              </div>
-            )}
-            {tab === 'out' && outList.length > 0 && (
-              <div className="px-1 text-[10px] text-slate-500">
-                Total wickets counted here: <b className="text-slate-300">{outList.reduce((a, p) => a + p.outs, 0)}</b> (bowler wickets only, from {basedOn} match{basedOn === 1 ? '' : 'es'} with ball-by-ball detail). Run outs and retired are not included.
-              </div>
-            )}
-            {tab === 'runs' && (
-              <div className="px-1 text-[10px] text-slate-500">Matchups of at least {MIN_BALLS_RUNS_TAB} balls are shown.</div>
-            )}
-
-            <div className="relative">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={q}
-                onChange={(e) => {
-                  setQ(e.target.value);
-                  setVisible(PAGE);
-                }}
-                placeholder={tab === 'finish' ? 'Search batter' : 'Search batter or bowler'}
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500"
-              />
-            </div>
-
-            {tab === 'finish' && finishers.length > 0 && (
-              <button
-                onClick={() => {
-                  cricketAudio.playClick();
-                  setView({ kind: 'top' });
-                }}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-orange-500 hover:opacity-90 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
-              >
-                <Share2 className="w-3.5 h-3.5" />
-                <span>Top Finishers Poster</span>
-              </button>
-            )}
-
-            <div className="max-h-[62vh] overflow-y-auto space-y-2 pr-0.5">
-              {tab !== 'finish' &&
-                shownPairs.slice(0, visible).map((p, i) => (
-                  <button
-                    key={p.key}
-                    onClick={() => {
-                      cricketAudio.playClick();
-                      setView({ kind: 'pair', key: p.key });
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-gradient-to-br from-[#0f1b3d] to-[#0b1226] border border-[#1e2b55] hover:border-orange-500 text-left cursor-pointer"
-                  >
-                    <span
-                      className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-black ${
-                        i < 3 ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-center gap-1.5 text-[13px] font-extrabold">
-                        <span className="text-orange-300 truncate">{p.bowlerName}</span>
-                        <span className="text-amber-400 text-[10px] shrink-0">▶</span>
-                        <span className="text-sky-300 truncate">{p.batterName}</span>
-                      </span>
-                      <span className="block text-[11px] text-slate-400 mt-1">
-                        <b className="text-slate-200">{p.runs}</b> runs · <b className="text-slate-200">{p.balls}</b> balls · SR{' '}
-                        <b className="text-slate-200">{p.balls ? ((p.runs / p.balls) * 100).toFixed(0) : 0}</b>
-                        {tab === 'runs' && p.outs > 0 && (
-                          <>
-                            {' '}· <b className="text-slate-200">{p.outs}</b> out
-                          </>
-                        )}
-                      </span>
-                      {tab === 'out' && outTypes(p) && (
-                        <span className="block text-[10.5px] text-orange-200/80 mt-0.5">{outTypes(p)}</span>
-                      )}
-                    </span>
-                    {tab === 'out' ? (
-                      <span className="shrink-0 text-center min-w-[52px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-orange-600 to-orange-900">
-                        <span className="block text-2xl font-black italic leading-none text-white">{p.outs}</span>
-                        <span className="block text-[9px] font-extrabold tracking-widest text-orange-200 mt-0.5">OUT</span>
-                      </span>
-                    ) : (
-                      <span className="shrink-0 text-center min-w-[52px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-900">
-                        <span className="block text-2xl font-black italic leading-none text-white">{p.runs}</span>
-                        <span className="block text-[9px] font-extrabold tracking-widest text-blue-200 mt-0.5">RUNS</span>
-                      </span>
-                    )}
-                  </button>
-                ))}
-
-              {tab === 'finish' &&
-                shownFinishers.slice(0, visible).map((f, i) => (
-                  <button
-                    key={f.id}
-                    onClick={() => {
-                      cricketAudio.playClick();
-                      setView({ kind: 'finisher', id: f.id });
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-gradient-to-br from-[#0f1b3d] to-[#0b1226] border border-[#1e2b55] hover:border-emerald-500 text-left cursor-pointer"
-                  >
-                    <span
-                      className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-black ${
-                        i < 3 ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {i + 1}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-[15px] font-extrabold text-white truncate">{f.name}</span>
-                      {teamOf?.[f.id] && <span className="block text-[11px] text-slate-500 truncate">{teamOf[f.id]}</span>}
-                      <span className="block text-[11px] text-slate-400 mt-1">
-                        <b className="text-slate-200">{f.notOut}</b> not out finishes · <b className="text-slate-200">{f.runs}</b> runs in those chases
-                      </span>
-                    </span>
-                    <span className="shrink-0 text-center min-w-[64px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-emerald-600 to-emerald-900">
-                      <span className="block text-2xl font-black italic leading-none text-white">{f.finishes}</span>
-                      <span className="block text-[9px] font-extrabold tracking-widest text-emerald-200 mt-0.5">FINISHES</span>
-                    </span>
-                  </button>
-                ))}
-
-              {tab !== 'finish' && shownPairs.length === 0 && (
-                <div className="text-center text-xs text-slate-500 py-6">
-                  {pairs.length === 0 ? 'No ball-by-ball detail found yet.' : 'Nothing found.'}
+              <>
+                <div className="px-3 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/25 text-[11px] text-emerald-200 leading-snug">
+                  A Finish = the batter on strike when the winning run is scored in a successful chase. Works for T10, T20, Test (4th innings) and every format.
                 </div>
-              )}
-              {tab === 'finish' && shownFinishers.length === 0 && (
-                <div className="text-center text-xs text-slate-500 py-6">
-                  {finishers.length === 0 ? 'No finished chases with ball-by-ball detail yet.' : 'Nothing found.'}
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search batter"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500"
+                  />
                 </div>
-              )}
-              {(() => {
-                const total = tab === 'finish' ? shownFinishers.length : shownPairs.length;
-                if (total <= visible) return null;
-                return (
+                {finishers.length > 0 && (
                   <button
                     onClick={() => {
                       cricketAudio.playClick();
-                      setVisible((v) => v + PAGE);
+                      setView({ kind: 'top' });
                     }}
-                    className="w-full py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[12px] font-bold text-sky-300 cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-orange-500 hover:opacity-90 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
                   >
-                    Show {Math.min(PAGE, total - visible)} more ({total - visible} left)
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Top Finishers Poster</span>
                   </button>
-                );
-              })()}
-            </div>
+                )}
+                <div className="max-h-[62vh] overflow-y-auto space-y-2 pr-0.5">
+                  {shownFinishers.map((f, i) => (
+                    <button
+                      key={f.id}
+                      onClick={() => {
+                        cricketAudio.playClick();
+                        setView({ kind: 'finisher', id: f.id });
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-gradient-to-br from-[#0f1b3d] to-[#0b1226] border border-[#1e2b55] hover:border-emerald-500 text-left cursor-pointer"
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-black ${
+                          i < 3 ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-extrabold text-white truncate">{f.name}</span>
+                        {teamOf?.[f.id] && <span className="block text-[11px] text-slate-500 truncate">{teamOf[f.id]}</span>}
+                        <span className="block text-[11px] text-slate-400 mt-1">
+                          <b className="text-slate-200">{f.notOut}</b> not out finishes · <b className="text-slate-200">{f.runs}</b> runs in those chases
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-center min-w-[64px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-emerald-600 to-emerald-900">
+                        <span className="block text-2xl font-black italic leading-none text-white">{f.finishes}</span>
+                        <span className="block text-[9px] font-extrabold tracking-widest text-emerald-200 mt-0.5">FINISHES</span>
+                      </span>
+                    </button>
+                  ))}
+                  {shownFinishers.length === 0 && (
+                    <div className="text-center text-xs text-slate-500 py-6">
+                      {finishers.length === 0 ? 'No finished chases with ball-by-ball detail yet.' : 'Nothing found.'}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
-            {(tab === 'out' ? outList.length : tab === 'runs' ? runsList.length : finishers.length) > 0 && (
-              <div className="text-center text-[10px] text-slate-600">
-                Tap a row for its poster · Based on {basedOn} match{basedOn === 1 ? '' : 'es'}
-              </div>
+            {/* ---------- Defenders ---------- */}
+            {tab === 'defend' && (
+              <>
+                <div className="px-3 py-2 rounded-xl bg-sky-500/10 border border-sky-500/25 text-[11px] text-sky-200 leading-snug">
+                  A Defend = the bowler who bowled the last ball when the team batting first won and the chase failed. Works for every format.
+                </div>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder="Search bowler"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder:text-slate-600 outline-none focus:border-sky-500"
+                  />
+                </div>
+                {defenders.length > 0 && (
+                  <button
+                    onClick={() => {
+                      cricketAudio.playClick();
+                      setView({ kind: 'topdef' });
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-90 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-1.5 shadow-lg"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Top Defenders Poster</span>
+                  </button>
+                )}
+                <div className="max-h-[62vh] overflow-y-auto space-y-2 pr-0.5">
+                  {shownDefenders.map((d, i) => (
+                    <button
+                      key={d.id}
+                      onClick={() => {
+                        cricketAudio.playClick();
+                        setView({ kind: 'defender', id: d.id });
+                      }}
+                      className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl bg-gradient-to-br from-[#0f1b3d] to-[#0b1226] border border-[#1e2b55] hover:border-sky-500 text-left cursor-pointer"
+                    >
+                      <span
+                        className={`w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[11px] font-black ${
+                          i < 3 ? 'bg-amber-500 text-black' : 'bg-slate-800 text-slate-400'
+                        }`}
+                      >
+                        {i + 1}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[15px] font-extrabold text-white truncate">{d.name}</span>
+                        {teamOf?.[d.id] && <span className="block text-[11px] text-slate-500 truncate">{teamOf[d.id]}</span>}
+                        <span className="block text-[11px] text-slate-400 mt-1">
+                          <b className="text-slate-200">{d.wickets}</b> wickets · <b className="text-slate-200">{d.runs}</b> runs given in those matches
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-center min-w-[64px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-900">
+                        <span className="block text-2xl font-black italic leading-none text-white">{d.defends}</span>
+                        <span className="block text-[9px] font-extrabold tracking-widest text-blue-200 mt-0.5">DEFENDS</span>
+                      </span>
+                    </button>
+                  ))}
+                  {shownDefenders.length === 0 && (
+                    <div className="text-center text-xs text-slate-500 py-6">
+                      {defenders.length === 0 ? 'No defended matches with ball-by-ball detail yet.' : 'Nothing found.'}
+                    </div>
+                  )}
+                </div>
+              </>
             )}
           </>
         )}
@@ -990,7 +1344,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
               }}
               className="py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[12px] font-bold text-sky-300 cursor-pointer"
             >
-              ← Back to list
+              ← Back
             </button>
           </>
         )}
