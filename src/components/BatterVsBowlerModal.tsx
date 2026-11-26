@@ -233,17 +233,16 @@ interface DefendItem {
   matchId: string;
   opp: string;
   margin: string;
-  wickets: number;
-  runs: number;
-  balls: number;
+  lastRuns: number;
+  lastWkts: number;
   at: number;
 }
 interface Defender {
   id: string;
   name: string;
   defends: number;
-  wickets: number;
-  runs: number;
+  lastRuns: number;
+  lastWkts: number;
   list: DefendItem[];
 }
 
@@ -269,14 +268,13 @@ function computeDefenders(pool: Match[]): Defender[] {
     if (!last || !last.bowlerId) return;
     const id: string = last.bowlerId;
 
-    let wickets = 0;
-    let runs = 0;
-    let balls = 0;
+    // Figures of the LAST OVER only (the over that holds the last ball), by that bowler.
+    let lastRuns = 0;
+    let lastWkts = 0;
     inn.balls.forEach((b: any) => {
-      if (b.bowlerId !== id) return;
-      if (b.isLegalDelivery) balls += 1;
-      if (b.extraType !== 'bye' && b.extraType !== 'legBye') runs += (b.runsBat || 0) + (b.extraRuns || 0);
-      if (b.isWicket && !NOT_BOWLER_OUT.includes(b.wicketType)) wickets += 1;
+      if (b.bowlerId !== id || b.overNumber !== last.overNumber) return;
+      if (b.extraType !== 'bye' && b.extraType !== 'legBye') lastRuns += (b.runsBat || 0) + (b.extraRuns || 0);
+      if (b.isWicket && !NOT_BOWLER_OUT.includes(b.wicketType)) lastWkts += 1;
     });
 
     const opp =
@@ -286,25 +284,24 @@ function computeDefenders(pool: Match[]): Defender[] {
 
     let d = map.get(id);
     if (!d) {
-      d = { id, name: last.bowlerName || 'Bowler', defends: 0, wickets: 0, runs: 0, list: [] };
+      d = { id, name: last.bowlerName || 'Bowler', defends: 0, lastRuns: 0, lastWkts: 0, list: [] };
       map.set(id, d);
     }
     d.defends += 1;
-    d.wickets += wickets;
-    d.runs += runs;
+    d.lastRuns += lastRuns;
+    d.lastWkts += lastWkts;
     d.list.push({
       matchId: m.id,
       opp,
       margin,
-      wickets,
-      runs,
-      balls,
+      lastRuns,
+      lastWkts,
       at: Number(m.updatedAt) || Date.parse(m.date || '') || 0,
     });
   });
   const rows = Array.from(map.values());
   rows.forEach((d) => d.list.sort((a, b) => b.at - a.at));
-  return rows.sort((a, b) => b.defends - a.defends || b.wickets - a.wickets || a.runs - b.runs);
+  return rows.sort((a, b) => b.defends - a.defends || b.lastWkts - a.lastWkts || a.lastRuns - b.lastRuns);
 }
 
 // ---------- posters ----------
@@ -573,10 +570,10 @@ function drawFinisherPoster(
     const ry = 1070 + i * 62;
     skew(ry + 26, () => {
       x.fillStyle = 'rgba(11,26,77,.95)';
-      x.fillRect(70, ry, 940, 52);
+      x.fillRect(70, ry, 940, 50);
       x.strokeStyle = 'rgba(251,191,36,.45)';
       x.lineWidth = 2;
-      x.strokeRect(70, ry, 940, 52);
+      x.strokeRect(70, ry, 940, 50);
     });
     fit(`vs ${it.opp}  ·  ${it.margin}`, 100, ry + 34, 600, 24, '800', '#fff', '', 'left');
     text(`${it.runs}${it.notOut ? '*' : ''} off ${it.balls}`, 985, ry + 36, `italic 900 28px ${PF}`, '#6ee7b7', 'right');
@@ -671,8 +668,8 @@ function drawDefenderPoster(
   text('bowled the last ball when the chase failed', 540, y + 196, `700 22px ${PF}`, 'rgba(255,255,255,.85)');
 
   const minis: [string, string][] = [
-    ['WICKETS IN THOSE MATCHES', String(d.wickets)],
-    ['RUNS GIVEN IN THOSE MATCHES', String(d.runs)],
+    ['WICKETS IN LAST OVERS', String(d.lastWkts)],
+    ['RUNS GIVEN IN LAST OVERS', String(d.lastRuns)],
   ];
   minis.forEach((m, i) => {
     const px = 80 + i * 470;
@@ -687,18 +684,18 @@ function drawDefenderPoster(
     fit(m[0], px + 225, 981, 400, 18, '800', '#fde68a', '');
   });
 
-  text('RECENT DEFENDS', 100, 1050, `800 22px ${PF}`, '#fde68a', 'left');
+  text('RECENT DEFENDS', 100, 1034, `800 22px ${PF}`, '#fde68a', 'left');
   d.list.slice(0, 3).forEach((it, i) => {
-    const ry = 1070 + i * 62;
+    const ry = 1050 + i * 58;
     skew(ry + 26, () => {
       x.fillStyle = 'rgba(11,26,77,.95)';
-      x.fillRect(70, ry, 940, 52);
+      x.fillRect(70, ry, 940, 50);
       x.strokeStyle = 'rgba(251,191,36,.45)';
       x.lineWidth = 2;
-      x.strokeRect(70, ry, 940, 52);
+      x.strokeRect(70, ry, 940, 50);
     });
     fit(`vs ${it.opp}  ·  ${it.margin}`, 100, ry + 34, 600, 24, '800', '#fff', '', 'left');
-    text(`${it.wickets} wkt${it.wickets === 1 ? '' : 's'} · ${it.runs} runs`, 985, ry + 36, `italic 900 26px ${PF}`, '#7dd3fc', 'right');
+    text(`Last over: ${it.lastRuns} run${it.lastRuns === 1 ? '' : 's'} · ${it.lastWkts} wkt${it.lastWkts === 1 ? '' : 's'}`, 985, ry + 36, `italic 900 26px ${PF}`, '#7dd3fc', 'right');
   });
 
   footer(`Based on ${basedOn} match${basedOn === 1 ? '' : 'es'} with ball-by-ball detail`);
@@ -716,7 +713,7 @@ function drawTopDefenders(
   text('BOWLED THE LAST BALL WHEN THE CHASE FAILED', 540, 232, `700 22px ${PF}`, '#fde68a');
 
   text('BOWLER', 130, 330, `800 20px ${PF}`, '#fde68a', 'left');
-  text('WICKETS', 760, 330, `800 20px ${PF}`, '#fde68a');
+  text('LAST OVER WKTS', 760, 330, `800 20px ${PF}`, '#fde68a');
   text('DEFENDS', 930, 330, `800 20px ${PF}`, '#fde68a');
 
   rows.slice(0, 5).forEach((r, i) => {
@@ -745,7 +742,7 @@ function drawTopDefenders(
     const tm = teamOf?.[r.id];
     fit(r.name.toUpperCase(), 160, tm ? cy - 6 : cy + 14, 480, 40, '900', '#fff', 'italic ', 'left');
     if (tm) fit(tm.toUpperCase(), 160, cy + 36, 480, 22, '700', '#93c5fd', '', 'left');
-    text(String(r.wickets), 760, cy + 18, `italic 900 48px ${PF}`, 'rgba(255,255,255,.9)');
+    text(String(r.lastWkts), 760, cy + 18, `italic 900 48px ${PF}`, 'rgba(255,255,255,.9)');
     text(String(r.defends), 930, cy + 28, `italic 900 72px ${PF}`, '#fff');
   });
   footer(`Based on ${basedOn} match${basedOn === 1 ? '' : 'es'} with ball-by-ball detail`);
@@ -835,7 +832,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   const asBat = useMemo(() => pairs.filter((p) => p.batterId === playerId).sort(byOuts), [pairs, playerId]);
   const asBowl = useMemo(() => pairs.filter((p) => p.bowlerId === playerId).sort(byOuts), [pairs, playerId]);
 
-  const scopeLine = scope === 'all' ? 'All Tournaments' : `${tournamentName}${season ? '  ·  ' + season : ''}`;
+  const scopeLine = scope === 'all' ? 'All Tournaments' : `${tournamentName}${season && !String(tournamentName || '').toLowerCase().includes(String(season).toLowerCase()) ? '  ·  ' + season : ''}`;
 
   const dataUrl = useMemo(() => {
     if (!isOpen || !view) return '';
@@ -1290,7 +1287,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
                         <span className="block text-[15px] font-extrabold text-white truncate">{d.name}</span>
                         {teamOf?.[d.id] && <span className="block text-[11px] text-slate-500 truncate">{teamOf[d.id]}</span>}
                         <span className="block text-[11px] text-slate-400 mt-1">
-                          <b className="text-slate-200">{d.wickets}</b> wickets · <b className="text-slate-200">{d.runs}</b> runs given in those matches
+                          Last overs: <b className="text-slate-200">{d.lastRuns}</b> runs · <b className="text-slate-200">{d.lastWkts}</b> wickets
                         </span>
                       </span>
                       <span className="shrink-0 text-center min-w-[64px] px-2 py-1.5 rounded-xl bg-gradient-to-b from-blue-600 to-blue-900">
