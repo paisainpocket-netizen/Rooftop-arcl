@@ -325,6 +325,12 @@ export default function App() {
   // array guarantees the profile modal always shows a player's real,
   // current record — never a copy that looks like it "lost" recent scores.
   const [inspectedPlayerId, setInspectedPlayerId] = useState<string | null>(null);
+  // Team and match records keep a copy of each player. The photo is NOT copied into them
+  // (it stays only in the player's own profile) so team/match records stay small.
+  const slimPlayer = (p: Player): Player => {
+    const { avatar, ...rest } = p as any;
+    return rest as Player;
+  };
   const [hasQuotaExceeded, setHasQuotaExceeded] = useState<boolean>(() => isFirestoreQuotaExceeded());
   const [isQuotaDismissed, setIsQuotaDismissed] = useState<boolean>(false);
   // Surfaces the actual raw Firestore error (e.g. permission-denied) in the
@@ -962,7 +968,7 @@ export default function App() {
       setTeams((prev) =>
         prev.map((t) => {
           if (t.id === teamId) {
-            const updated = { ...t, players: [...t.players, newPlayer] };
+            const updated = { ...t, players: [...t.players, slimPlayer(newPlayer)] };
             cloudDb.saveTeam(updated).catch(console.warn);
             return updated;
           }
@@ -973,7 +979,7 @@ export default function App() {
       if (currentMatch?.teamA?.id === teamId) {
         const updated = {
           ...currentMatch,
-          teamA: { ...currentMatch.teamA, players: [...(currentMatch.teamA.players || []), newPlayer] },
+          teamA: { ...currentMatch.teamA, players: [...(currentMatch.teamA.players || []), slimPlayer(newPlayer)] },
           updatedAt: Date.now(),
         };
         setCurrentMatch(updated);
@@ -981,7 +987,7 @@ export default function App() {
       } else if (currentMatch?.teamB?.id === teamId) {
         const updated = {
           ...currentMatch,
-          teamB: { ...currentMatch.teamB, players: [...(currentMatch.teamB.players || []), newPlayer] },
+          teamB: { ...currentMatch.teamB, players: [...(currentMatch.teamB.players || []), slimPlayer(newPlayer)] },
           updatedAt: Date.now(),
         };
         setCurrentMatch(updated);
@@ -1077,7 +1083,7 @@ export default function App() {
         if (t.id === teamId) {
           const updated = {
             ...t,
-            players: [...(t.players || []).filter((p) => p.id !== player.id), player],
+            players: [...(t.players || []).filter((p) => p.id !== player.id), slimPlayer(player)],
           };
           cloudDb.saveTeam(updated).catch(console.warn);
           return updated;
@@ -1720,7 +1726,7 @@ export default function App() {
                 if (t.id === teamId) {
                   const exists = t.players.some((p) => p.id === player.id || p.profileId === player.profileId);
                   if (exists) return t;
-                  return { ...t, players: [...t.players, player] };
+                  return { ...t, players: [...t.players, slimPlayer(player)] };
                 }
                 return t;
               })
@@ -1736,10 +1742,10 @@ export default function App() {
               if (!prev) return prev;
               if (prev.teamA?.id === teamId) {
                 const exists = (prev.teamA.players || []).some((p) => p.id === player.id || p.profileId === player.profileId);
-                return exists ? prev : { ...prev, teamA: { ...prev.teamA, players: [...(prev.teamA.players || []), player] } };
+                return exists ? prev : { ...prev, teamA: { ...prev.teamA, players: [...(prev.teamA.players || []), slimPlayer(player)] } };
               } else if (prev.teamB?.id === teamId) {
                 const exists = (prev.teamB.players || []).some((p) => p.id === player.id || p.profileId === player.profileId);
-                return exists ? prev : { ...prev, teamB: { ...prev.teamB, players: [...(prev.teamB.players || []), player] } };
+                return exists ? prev : { ...prev, teamB: { ...prev.teamB, players: [...(prev.teamB.players || []), slimPlayer(player)] } };
               }
               return prev;
             });
