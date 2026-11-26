@@ -109,7 +109,8 @@ export const CreateTeamModal: React.FC<CreateTeamModalProps> = ({
       creatorId: loggedInPlayer?.id,
       creatorProfileId: loggedInPlayer?.profileId,
       creatorName: loggedInPlayer?.name,
-      players: loggedInPlayer ? [{ ...loggedInPlayer }] : [],
+      // photo is not copied into the team record (it stays in the player's own profile)
+      players: loggedInPlayer ? [(({ avatar, ...rest }) => rest as Player)(loggedInPlayer as any)] : [],
     };
 
     onSaveTeam(newTeam);
