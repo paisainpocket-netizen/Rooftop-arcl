@@ -24,7 +24,7 @@ const INNINGS_KEYS = ['innings1', 'innings2', 'innings3', 'innings4'];
 // dismissals that are not credited to the bowler
 const NOT_BOWLER_OUT = ['runout', 'retired_hurt', 'retired_out', 'retired', 'timed_out', 'obstructing_field'];
 const MIN_BALLS_RUNS_TAB = 6; // hide 1-2 ball matchups from the "Most Runs" list
-const LIST_LIMIT = 60;
+const PAGE = 10; // rows shown at first, and added by each "Show more"
 
 interface Pair {
   key: string;
@@ -43,6 +43,7 @@ interface Pair {
   lbw: number;
   stumped: number;
   hitwicket: number;
+  roofOut: number;
   otherOut: number;
   matches: number;
 }
@@ -128,7 +129,7 @@ function computePairs(pool: Match[]): Pair[] {
         bowlerId: b.bowlerId,
         bowlerName: b.bowlerName || 'Bowler',
         balls: 0, runs: 0, fours: 0, sixes: 0, dots: 0, outs: 0,
-        bowled: 0, caught: 0, lbw: 0, stumped: 0, hitwicket: 0, otherOut: 0,
+        bowled: 0, caught: 0, lbw: 0, stumped: 0, hitwicket: 0, roofOut: 0, otherOut: 0,
         matches: 0,
         seen: new Set<string>(),
       };
@@ -142,7 +143,13 @@ function computePairs(pool: Match[]): Pair[] {
     }
     if (b.isFour || b.runsBat === 4) p.fours += 1;
     if (b.isSix || b.runsBat === 6) p.sixes += 1;
-    if (b.isWicket && b.dismissedPlayerId === b.strikerId && !NOT_BOWLER_OUT.includes(b.wicketType)) {
+    // Same rule the scorer uses for a bowler's wicket. Old balls without dismissedPlayerId are
+    // still counted (the batter on strike is the one who was out for these dismissal types).
+    if (
+      b.isWicket &&
+      !NOT_BOWLER_OUT.includes(b.wicketType) &&
+      (!b.dismissedPlayerId || b.dismissedPlayerId === b.strikerId)
+    ) {
       p.outs += 1;
       const t = b.wicketType;
       if (t === 'bowled') p.bowled += 1;
@@ -150,6 +157,7 @@ function computePairs(pool: Match[]): Pair[] {
       else if (t === 'lbw') p.lbw += 1;
       else if (t === 'stumped') p.stumped += 1;
       else if (t === 'hitwicket') p.hitwicket += 1;
+      else if (t === 'direct_roof_out') p.roofOut += 1;
       else p.otherOut += 1;
     }
   });
@@ -568,6 +576,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   const [view, setView] = useState<View>(null);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  const [visible, setVisible] = useState(PAGE);
 
   const pool = useMemo(
     () => uniqueMatches(scope === 'all' ? allMatches : matches),
@@ -657,12 +666,14 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
     setScope(s);
     setView(null);
     setQ('');
+    setVisible(PAGE);
   };
   const changeTab = (t: Tab) => {
     cricketAudio.playClick();
     setTab(t);
     setView(null);
     setQ('');
+    setVisible(PAGE);
   };
 
   const makeFile = (): File => {
@@ -734,6 +745,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
     if (p.lbw) parts.push(`LBW ${p.lbw}`);
     if (p.stumped) parts.push(`Stumped ${p.stumped}`);
     if (p.hitwicket) parts.push(`Hit wicket ${p.hitwicket}`);
+    if (p.roofOut) parts.push(`Roof out ${p.roofOut}`);
     if (p.otherOut) parts.push(`Other ${p.otherOut}`);
     return parts.join(' · ');
   };
@@ -792,6 +804,11 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
                 A Finish = the batter on strike when the winning run is scored in a successful chase. Works for T10, T20, Test (4th innings) and every format.
               </div>
             )}
+            {tab === 'out' && outList.length > 0 && (
+              <div className="px-1 text-[10px] text-slate-500">
+                Total wickets counted here: <b className="text-slate-300">{outList.reduce((a, p) => a + p.outs, 0)}</b> (bowler wickets only, from {basedOn} match{basedOn === 1 ? '' : 'es'} with ball-by-ball detail). Run outs and retired are not included.
+              </div>
+            )}
             {tab === 'runs' && (
               <div className="px-1 text-[10px] text-slate-500">Matchups of at least {MIN_BALLS_RUNS_TAB} balls are shown.</div>
             )}
@@ -800,7 +817,10 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
               <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 value={q}
-                onChange={(e) => setQ(e.target.value)}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setVisible(PAGE);
+                }}
                 placeholder={tab === 'finish' ? 'Search batter' : 'Search batter or bowler'}
                 className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-sm text-white placeholder:text-slate-600 outline-none focus:border-emerald-500"
               />
@@ -821,7 +841,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
 
             <div className="max-h-[62vh] overflow-y-auto space-y-2 pr-0.5">
               {tab !== 'finish' &&
-                shownPairs.slice(0, LIST_LIMIT).map((p, i) => (
+                shownPairs.slice(0, visible).map((p, i) => (
                   <button
                     key={p.key}
                     onClick={() => {
@@ -871,7 +891,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
                 ))}
 
               {tab === 'finish' &&
-                shownFinishers.slice(0, LIST_LIMIT).map((f, i) => (
+                shownFinishers.slice(0, visible).map((f, i) => (
                   <button
                     key={f.id}
                     onClick={() => {
@@ -911,9 +931,21 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
                   {finishers.length === 0 ? 'No finished chases with ball-by-ball detail yet.' : 'Nothing found.'}
                 </div>
               )}
-              {((tab !== 'finish' && shownPairs.length > LIST_LIMIT) || (tab === 'finish' && shownFinishers.length > LIST_LIMIT)) && (
-                <div className="text-center text-[10px] text-slate-600 py-1">Top {LIST_LIMIT} shown. Use search to find others.</div>
-              )}
+              {(() => {
+                const total = tab === 'finish' ? shownFinishers.length : shownPairs.length;
+                if (total <= visible) return null;
+                return (
+                  <button
+                    onClick={() => {
+                      cricketAudio.playClick();
+                      setVisible((v) => v + PAGE);
+                    }}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-[12px] font-bold text-sky-300 cursor-pointer"
+                  >
+                    Show {Math.min(PAGE, total - visible)} more ({total - visible} left)
+                  </button>
+                );
+              })()}
             </div>
 
             {(tab === 'out' ? outList.length : tab === 'runs' ? runsList.length : finishers.length) > 0 && (
