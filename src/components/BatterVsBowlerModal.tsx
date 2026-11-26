@@ -797,6 +797,10 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
   const finishers = useMemo(() => (isOpen ? computeFinishers(pool) : []), [isOpen, pool]);
   const defenders = useMemo(() => (isOpen ? computeDefenders(pool) : []), [isOpen, pool]);
 
+  // Headline runs / balls / wickets come from the SAVED scorecards (the same numbers the
+  // Orange Cap and Purple Cap tables use), so a corrected scorecard shows the same total here.
+  // Ball records are used only for the "who got whom" details, and as a fallback when a match
+  // has no saved batting / bowling stats.
   const players = useMemo<PlayerRow[]>(() => {
     const map = new Map<string, PlayerRow>();
     const get = (id: string, name: string) => {
@@ -807,19 +811,52 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
       }
       return r;
     };
-    pairs.forEach((p) => {
-      const bat = get(p.batterId, p.batterName);
-      bat.runs += p.runs;
-      bat.balls += p.balls;
-      const bowl = get(p.bowlerId, p.bowlerName);
-      bowl.wickets += p.outs;
+    const fromScorecard = new Set<string>();
+    pool.forEach((m: any) => {
+      INNINGS_KEYS.forEach((k) => {
+        const inn = m[k];
+        if (!inn) return;
+        const bs = inn.battingStats || {};
+        const ws = inn.bowlingStats || {};
+        const hasStats = Object.keys(bs).length > 0 || Object.keys(ws).length > 0;
+        if (!hasStats) return;
+        fromScorecard.add(`${m.id}:${k}`);
+        Object.keys(bs).forEach((pid) => {
+          const b = bs[pid];
+          const r = get(b.playerId || pid, b.playerName || 'Player');
+          r.runs += Number(b.runs) || 0;
+          r.balls += Number(b.balls) || 0;
+        });
+        Object.keys(ws).forEach((pid) => {
+          const w = ws[pid];
+          const r = get(w.playerId || pid, w.playerName || 'Player');
+          r.wickets += Number(w.wickets) || 0;
+        });
+      });
+    });
+    // Innings that have ball records but no saved stats: fall back to the ball records.
+    pool.forEach((m: any) => {
+      INNINGS_KEYS.forEach((k) => {
+        const inn = m[k];
+        if (!inn || fromScorecard.has(`${m.id}:${k}`) || !Array.isArray(inn.balls)) return;
+        inn.balls.forEach((b: any) => {
+          if (b.strikerId) {
+            const r = get(b.strikerId, b.strikerName || 'Player');
+            r.runs += b.runsBat || 0;
+            if (b.extraType !== 'wide') r.balls += 1;
+          }
+          if (b.isWicket && b.bowlerId && !NOT_BOWLER_OUT.includes(b.wicketType)) {
+            get(b.bowlerId, b.bowlerName || 'Player').wickets += 1;
+          }
+        });
+      });
     });
     return Array.from(map.values()).sort(
       (a, b) => b.runs - a.runs || b.wickets - a.wickets || a.name.localeCompare(b.name)
     );
-  }, [pairs]);
+  }, [pool]);
 
-  const totalWickets = useMemo(() => pairs.reduce((a, p) => a + p.outs, 0), [pairs]);
+  const totalWickets = useMemo(() => players.reduce((a, p) => a + p.wickets, 0), [players]);
 
   const needle = q.trim().toLowerCase();
   const matchesNeedle = (name: string) => !needle || name.toLowerCase().includes(needle);
@@ -1130,7 +1167,7 @@ export const BatterVsBowlerModal: React.FC<BatterVsBowlerModalProps> = ({
                 </div>
                 {players.length > 0 && (
                   <div className="text-center text-[10px] text-slate-600">
-                    Tap a player to see his list · Wickets counted: {totalWickets} (from {basedOn} match{basedOn === 1 ? '' : 'es'}). Run outs and retired are not included.
+                    Tap a player to see his list · Runs and wickets match the Orange / Purple Cap tables (total wickets {totalWickets}). Run outs and retired are not included.
                   </div>
                 )}
               </>
