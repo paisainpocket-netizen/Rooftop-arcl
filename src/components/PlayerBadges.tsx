@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 
 // Small achievement badges shown on a player's profile.
 // Worked out from the player's saved career stats, so it reads nothing from Firebase.
@@ -56,23 +56,33 @@ export function earnedBadges(stats: any): Badge[] {
 
 export const PlayerBadges: React.FC<{ stats: any }> = ({ stats }) => {
   const badges = earnedBadges(stats);
+  // Tapping a badge shows its detail in one small line below (the row itself stays one line).
+  const [picked, setPicked] = useState<string>('');
   if (badges.length === 0) return null;
+  const current = badges.find((b) => b.title === picked) || badges[0];
   return (
     <div className="mt-3">
-      <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-1.5">Badges</div>
-      <div className="flex flex-wrap gap-1.5">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Badges · {badges.length}</span>
+        {badges.length > 3 && <span className="text-[10px] font-semibold text-slate-600">swipe →</span>}
+      </div>
+      <div className="flex gap-1.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {badges.map((b) => (
-          <div
+          <button
             key={b.title}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-[11px] font-black ${b.tone}`}
+            type="button"
+            onClick={() => setPicked(b.title)}
+            className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-black whitespace-nowrap cursor-pointer ${b.tone} ${
+              b.title === current.title ? 'ring-2 ring-white/40' : ''
+            }`}
           >
             <span className="text-sm leading-none">{b.icon}</span>
-            <span className="leading-tight">
-              {b.title}
-              <span className="block text-[9px] font-semibold opacity-70">{b.note}</span>
-            </span>
-          </div>
+            <span>{b.title}</span>
+          </button>
         ))}
+      </div>
+      <div className="mt-1.5 text-[11px] text-slate-400">
+        <span>{current.icon} {current.title}</span> · <b className="text-slate-200">{current.note}</b>
       </div>
     </div>
   );
