@@ -319,10 +319,151 @@ function bestPerformers(match: any) {
   return { bat, bowl, boundaries: fours + sixes };
 }
 
+// ---------- Test match graph: one panel per innings round, both teams drawn together ----------
+interface InnLine {
+  pts: [number, number][];
+  wk: [number, number][];
+  runs: number;
+  wkts: number;
+  overs: string;
+}
+function innLine(inn: any): InnLine {
+  const pts: [number, number][] = [[0, 0]];
+  const wk: [number, number][] = [];
+  let runs = 0;
+  let legal = 0;
+  (inn?.balls || []).forEach((b: any) => {
+    runs += n(b.runsBat) + n(b.extraRuns);
+    if (b.isLegalDelivery) legal += 1;
+    const ov = legal / 6;
+    pts.push([ov, runs]);
+    if (b.isWicket && !NOT_COUNTED_WICKET.includes(b.wicketType)) wk.push([ov, runs]);
+  });
+  return { pts, wk, runs: n(inn?.totalRuns) || runs, wkts: n(inn?.totalWickets), overs: oversText(legal) };
+}
+
+function drawGraphTest(match: any, o: ReturnType<typeof makeBase>): HTMLCanvasElement {
+  const { W, x, text, fit, bar, gold } = o;
+  const inns = inningsList(match).filter((i) => (i.balls || []).length > 0);
+  const teamOrder: string[] = [];
+  inns.forEach((i) => {
+    if (!teamOrder.includes(i.teamId)) teamOrder.push(i.teamId);
+  });
+  const mineOf = (id: string) => inns.filter((i) => i.teamId === id);
+  const colA = '#60a5fa';
+  const colB = '#fb923c';
+  const nameA = mineOf(teamOrder[0])[0]?.teamName || 'Team A';
+  const nameB = mineOf(teamOrder[1])[0]?.teamName || 'Team B';
+  const scoreOf = (id: string) => mineOf(id).map((i) => `${n(i.totalRuns)}-${n(i.totalWickets)}`).join(' & ');
+
+  const chip = (px: number, col: string, name: string, sc: string) => {
+    bar(px, 290, 455, 100, 'rgba(255,255,255,.07)', col);
+    fit(name.toUpperCase(), px + 227, 328, 420, 26, '800', col);
+    text(sc, px + 227, 378, '900 46px sans-serif', '#fff');
+  };
+  chip(60, colA, nameA, scoreOf(teamOrder[0]));
+  chip(565, colB, nameB, scoreOf(teamOrder[1]));
+
+  bar(70, 410, 940, 650, 'rgba(255,255,255,.05)', 'rgba(255,255,255,.14)');
+  const maxOv = Math.max(n(match.totalOvers), 1);
+  const L = 130;
+  const R = 990;
+  let bestOver = 0;
+
+  const panel = (round: number, top: number) => {
+    const la = mineOf(teamOrder[0])[round] ? innLine(mineOf(teamOrder[0])[round]) : null;
+    const lb = mineOf(teamOrder[1])[round] ? innLine(mineOf(teamOrder[1])[round]) : null;
+    const T = top + 44;
+    const B = top + 244;
+    const label = round === 0 ? '1ST INNINGS' : round === 1 ? '2ND INNINGS' : `INNINGS ${round + 1}`;
+    text(label, 100, top + 26, '900 22px sans-serif', '#fde68a', 'left');
+    // legend with each team's score in this innings
+    const leg = (cx: number, col: string, nm: string, ln: InnLine | null) => {
+      x.beginPath();
+      x.arc(cx, top + 19, 7, 0, Math.PI * 2);
+      x.fillStyle = col;
+      x.fill();
+      const t = ln ? `${nm.toUpperCase()} ${ln.runs}/${ln.wkts}` : `${nm.toUpperCase()} -`;
+      fit(t, cx + 14, top + 26, 270, 18, '800', '#fff', '', 'left');
+    };
+    leg(380, colA, nameA, la);
+    leg(700, colB, nameB, lb);
+
+    const topRuns = Math.max(la ? la.pts[la.pts.length - 1][1] : 0, lb ? lb.pts[lb.pts.length - 1][1] : 0, 20);
+    const step = topRuns > 150 ? 50 : topRuns > 60 ? 20 : 10;
+    const maxR = Math.ceil(topRuns / step) * step;
+    const maxX = Math.max(maxOv, Math.ceil(Math.max(la ? la.pts[la.pts.length - 1][0] : 0, lb ? lb.pts[lb.pts.length - 1][0] : 0)));
+    x.strokeStyle = 'rgba(255,255,255,.12)';
+    x.lineWidth = 1;
+    for (let i = 0; i <= maxR; i += step) {
+      const y = B - ((B - T) * i) / maxR;
+      x.beginPath();
+      x.moveTo(L, y);
+      x.lineTo(R, y);
+      x.stroke();
+      text(String(i), L - 12, y + 6, '600 16px sans-serif', 'rgba(255,255,255,.5)', 'right');
+    }
+    const xs = maxX > 20 ? 5 : 3;
+    for (let i = 0; i <= maxX; i += xs) {
+      text(`${i}`, L + ((R - L) * i) / maxX, B + 24, '600 16px sans-serif', 'rgba(255,255,255,.5)');
+    }
+    text('OVERS', (L + R) / 2, B + 46, '700 14px sans-serif', 'rgba(255,255,255,.4)');
+    const px = (ov: number) => L + ((R - L) * ov) / maxX;
+    const py = (r: number) => B - ((B - T) * r) / maxR;
+    const draw = (ln: InnLine | null, col: string) => {
+      if (!ln) return;
+      x.save();
+      x.shadowColor = col;
+      x.shadowBlur = 12;
+      x.strokeStyle = col;
+      x.lineWidth = 5;
+      x.lineJoin = 'round';
+      x.beginPath();
+      ln.pts.forEach((p, i) => (i ? x.lineTo(px(p[0]), py(p[1])) : x.moveTo(px(p[0]), py(p[1]))));
+      x.stroke();
+      x.restore();
+      ln.wk.forEach((p) => {
+        x.beginPath();
+        x.arc(px(p[0]), py(p[1]), 8, 0, Math.PI * 2);
+        x.fillStyle = '#ef4444';
+        x.fill();
+        x.lineWidth = 2.5;
+        x.strokeStyle = '#fff';
+        x.stroke();
+      });
+    };
+    draw(la, colA);
+    draw(lb, colB);
+  };
+  panel(0, 424);
+  panel(1, 740);
+  void bestOver;
+
+  const best = bestPerformers(match);
+  const stats: [string, string, boolean][] = [
+    ['TOP SCORER', best.bat.runs >= 0 && best.bat.name ? `${best.bat.name} ${best.bat.runs}` : '-', false],
+    ['BEST BOWLER', best.bowl.wkts >= 0 && best.bowl.name ? `${best.bowl.name} ${best.bowl.wkts}/${best.bowl.runs}` : '-', false],
+    ['BOUNDARIES', String(best.boundaries), false],
+  ];
+  stats.forEach((s2, i) => {
+    const w = 300;
+    const sx = 70 + i * (w + 20);
+    bar(sx, 1085, w, 104, 'rgba(255,255,255,.07)', 'rgba(255,255,255,.16)');
+    fit(s2[1], sx + w / 2, 1146, w - 40, 40, '900', '#fff');
+    text(s2[0], sx + w / 2, 1176, '700 18px sans-serif', 'rgba(255,255,255,.62)');
+  });
+  const mom = match?.result?.playerOfTheMatch;
+  bar(70, 1215, 940, 64, gold, 'rgba(0,0,0,0)');
+  fit(mom?.playerName ? `PLAYER OF THE MATCH: ${String(mom.playerName).toUpperCase()}` : `${nameA} vs ${nameB}`.toUpperCase(), W / 2, 1259, 860, 30, '900', '#1a1203');
+  text('ARCL AMRITSAR', W / 2, 1308, '700 20px sans-serif', 'rgba(255,255,255,.5)');
+  return o.c;
+}
+
 function drawGraph(match: any): HTMLCanvasElement {
   const o = makeBase();
   const { W, x, text, fit, bar, gold } = o;
   headerBlock(o, match);
+  if (inningsList(match).filter((i) => (i.balls || []).length > 0).length > 2) return drawGraphTest(match, o);
   const data = buildSeries(match);
   if (!data) throw new Error('no ball data');
   const { a, b, maxOvers, bestOver } = data;
