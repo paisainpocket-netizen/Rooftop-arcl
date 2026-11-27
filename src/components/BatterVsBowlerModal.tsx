@@ -221,7 +221,7 @@ function computeFinishers(pool: Match[]): Finisher[] {
       runs,
       balls,
       notOut: !out,
-      at: Number(m.updatedAt) || Date.parse(m.date || '') || 0,
+      at: Number(m.createdAt) || Number(m.updatedAt) || Date.parse(m.date || "") || 0,
     });
   });
   const rows = Array.from(map.values());
@@ -296,7 +296,7 @@ function computeDefenders(pool: Match[]): Defender[] {
       margin,
       lastRuns,
       lastWkts,
-      at: Number(m.updatedAt) || Date.parse(m.date || '') || 0,
+      at: Number(m.createdAt) || Number(m.updatedAt) || Date.parse(m.date || "") || 0,
     });
   });
   const rows = Array.from(map.values());
