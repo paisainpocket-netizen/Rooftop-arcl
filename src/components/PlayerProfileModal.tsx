@@ -25,6 +25,7 @@ import { PlayerShareCardModal } from './PlayerShareCardModal';
 import { PlayerCompareModal } from './PlayerCompareModal';
 import { SeasonPosterModal } from './SeasonPosterModal';
 import { computeSeasons, SeasonRow } from '../utils/seasonStats';
+import { PlayerFormPosterModal } from './PlayerFormPosterModal';
 import { PlayerBadges } from './PlayerBadges';
 
 interface PlayerProfileModalProps {
@@ -139,6 +140,7 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
   const [showShareCard, setShowShareCard] = useState(false);
   const [rebuilding, setRebuilding] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [showForm, setShowForm] = useState(false);
   // Season poster: null = closed; {season: row} = one season; {season: null} = all seasons
   const [seasonPoster, setSeasonPoster] = useState<{ season: SeasonRow | null } | null>(null);
   // Seasons ticked for the "Season by Season" poster (max 8)
@@ -212,11 +214,6 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
       }
     }
   }
-  const batFormColor = (r: number) =>
-    r >= 50 ? 'bg-amber-500 text-slate-950' : r >= 30 ? 'bg-emerald-500 text-white' : r === 0 ? 'bg-rose-500 text-white' : r < 10 ? 'bg-slate-600 text-white' : 'bg-blue-500 text-white';
-  const bowlFormColor = (wk: number) =>
-    wk >= 3 ? 'bg-amber-500 text-slate-950' : wk === 2 ? 'bg-emerald-500 text-white' : wk === 1 ? 'bg-blue-500 text-white' : 'bg-slate-600 text-white';
-
   // Active stats for current selected format
   const currentStats: PlayerStats = (() => {
     if (selectedFormat === 'all') return player.stats;
@@ -291,36 +288,50 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           {/* Top bar */}
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-slate-950 shrink-0">
             <span className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Player Profile</span>
-            <div className="flex items-center gap-2">
-              {allPlayers && allPlayers.length > 1 && (
-                <button
-                  onClick={() => {
-                    cricketAudio.playClick();
-                    setShowCompare(true);
-                  }}
-                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold cursor-pointer border border-slate-700"
-                >
-                  Compare
-                </button>
-              )}
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-800 bg-slate-950 shrink-0">
+            {allPlayers && allPlayers.length > 1 && (
               <button
                 onClick={() => {
-                  cricketAudio.playClick('Opening full screen player card');
-                  setShowShareCard(true);
+                  cricketAudio.playClick();
+                  setShowCompare(true);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer transition"
-                title="Open share card"
+                className="flex-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 text-xs font-bold cursor-pointer border border-slate-700"
+              >
+                Compare
+              </button>
+            )}
+            {(formBat.length > 0 || formBowl.length > 0) && (
+              <button
+                onClick={() => {
+                  cricketAudio.playClick();
+                  setShowForm(true);
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-90 text-white text-xs font-bold cursor-pointer"
               >
                 <Share2 className="w-3.5 h-3.5" />
-                <span>Share Card</span>
+                <span>Form</span>
               </button>
-              <button
-                onClick={onClose}
-                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
+            )}
+            <button
+              onClick={() => {
+                cricketAudio.playClick('Opening full screen player card');
+                setShowShareCard(true);
+              }}
+              className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer transition"
+              title="Open share card"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share Card</span>
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto">
@@ -389,45 +400,6 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
               </div>
               <PlayerBadges stats={player.stats} />
 
-              {/* Recent form */}
-              {(formBat.length > 0 || formBowl.length > 0) && (
-                <div className="mt-3 p-3 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Recent Form</span>
-                    <span className="text-[10px] text-slate-500">latest first</span>
-                  </div>
-                  {formBat.length > 0 && (
-                    <div>
-                      <span className="text-[9px] font-bold uppercase text-slate-500 block mb-1">Batting · last {formBat.length} innings</span>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {formBat.map((f, i) => (
-                          <span
-                            key={i}
-                            className={`min-w-[40px] h-10 px-1.5 rounded-full flex items-center justify-center text-[13px] font-black italic ${batFormColor(f.runs)}`}
-                          >
-                            {f.runs}{f.notOut ? '*' : ''}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  {formBowl.length > 0 && (
-                    <div>
-                      <span className="text-[9px] font-bold uppercase text-slate-500 block mb-1">Bowling · last {formBowl.length} spells</span>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {formBowl.map((f, i) => (
-                          <span
-                            key={i}
-                            className={`min-w-[44px] h-9 px-1.5 rounded-full flex items-center justify-center text-[12px] font-black italic ${bowlFormColor(f.wk)}`}
-                          >
-                            {f.wk}/{f.runs}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Tabs */}
@@ -902,6 +874,17 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
           </div>
         </div>
       </div>
+
+      {showForm && (
+        <PlayerFormPosterModal
+          isOpen={showForm}
+          onClose={() => setShowForm(false)}
+          player={player}
+          teamName={primaryTeam?.name}
+          bat={formBat}
+          bowl={formBowl}
+        />
+      )}
 
       {showCompare && allPlayers && (
         <PlayerCompareModal
