@@ -185,6 +185,38 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
     })
     .filter((item) => item.played);
 
+  // Recent form: last 5 batting innings and last 5 bowling spells, newest first.
+  // Worked out from the matches already loaded on the phone (no extra Firebase reads).
+  const FORM_COUNT = 5;
+  const formBat: { runs: number; notOut: boolean }[] = [];
+  const formBowl: { wk: number; runs: number }[] = [];
+  {
+    const done = playerMatchHistory
+      .map((pm) => pm.match as any)
+      .filter((m) => m.status === 'completed')
+      // newest match first; the time the match was created does not change when a scorecard is edited
+      .sort((a, b) => (Number(b.createdAt) || Number(b.updatedAt) || 0) - (Number(a.createdAt) || Number(a.updatedAt) || 0));
+    for (const m of done) {
+      if (formBat.length >= FORM_COUNT && formBowl.length >= FORM_COUNT) break;
+      for (const k of ['innings4', 'innings3', 'innings2', 'innings1']) {
+        const inn = m[k];
+        if (!inn) continue;
+        const b = inn.battingStats?.[player.id];
+        if (b && (b.balls > 0 || b.isOut) && formBat.length < FORM_COUNT) {
+          formBat.push({ runs: Number(b.runs) || 0, notOut: !b.isOut });
+        }
+        const w = inn.bowlingStats?.[player.id];
+        if (w && (w.overs > 0 || w.balls > 0) && formBowl.length < FORM_COUNT) {
+          formBowl.push({ wk: Number(w.wickets) || 0, runs: Number(w.runs) || 0 });
+        }
+      }
+    }
+  }
+  const batFormColor = (r: number) =>
+    r >= 50 ? 'bg-amber-500 text-slate-950' : r >= 30 ? 'bg-emerald-500 text-white' : r === 0 ? 'bg-rose-500 text-white' : r < 10 ? 'bg-slate-600 text-white' : 'bg-blue-500 text-white';
+  const bowlFormColor = (wk: number) =>
+    wk >= 3 ? 'bg-amber-500 text-slate-950' : wk === 2 ? 'bg-emerald-500 text-white' : wk === 1 ? 'bg-blue-500 text-white' : 'bg-slate-600 text-white';
+
   // Active stats for current selected format
   const currentStats: PlayerStats = (() => {
     if (selectedFormat === 'all') return player.stats;
@@ -356,6 +388,46 @@ export const PlayerProfileModal: React.FC<PlayerProfileModalProps> = ({
                 <StatTile label="Fielding" value={(player.stats.catches || 0) + (player.stats.runOuts || 0)} sub={`${player.stats.catches || 0} Ct · ${player.stats.runOuts || 0} RO`} />
               </div>
               <PlayerBadges stats={player.stats} />
+
+              {/* Recent form */}
+              {(formBat.length > 0 || formBowl.length > 0) && (
+                <div className="mt-3 p-3 rounded-2xl bg-slate-900/70 border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-amber-300">Recent Form</span>
+                    <span className="text-[10px] text-slate-500">latest first</span>
+                  </div>
+                  {formBat.length > 0 && (
+                    <div>
+                      <span className="text-[9px] font-bold uppercase text-slate-500 block mb-1">Batting · last {formBat.length} innings</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {formBat.map((f, i) => (
+                          <span
+                            key={i}
+                            className={`min-w-[40px] h-10 px-1.5 rounded-full flex items-center justify-center text-[13px] font-black italic ${batFormColor(f.runs)}`}
+                          >
+                            {f.runs}{f.notOut ? '*' : ''}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {formBowl.length > 0 && (
+                    <div>
+                      <span className="text-[9px] font-bold uppercase text-slate-500 block mb-1">Bowling · last {formBowl.length} spells</span>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {formBowl.map((f, i) => (
+                          <span
+                            key={i}
+                            className={`min-w-[44px] h-9 px-1.5 rounded-full flex items-center justify-center text-[12px] font-black italic ${bowlFormColor(f.wk)}`}
+                          >
+                            {f.wk}/{f.runs}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Tabs */}
