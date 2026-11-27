@@ -49,7 +49,7 @@ export function computeSeasons(items: { match: Match }[], playerId: string): Sea
     }
     const r = row;
     r.matches += 1;
-    const t = Number(m.updatedAt) || Date.parse(m.date || '') || 0;
+    const t = Number(m.createdAt) || Number(m.updatedAt) || Date.parse(m.date || "") || 0;
     if (t > r.lastAt) r.lastAt = t;
 
     [m.innings1, m.innings2, m.innings3, m.innings4].forEach((inn) => {
