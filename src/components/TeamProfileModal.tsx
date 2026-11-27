@@ -17,9 +17,180 @@ import {
   Target,
   Sparkles,
   Search,
+  Share2,
+  Download,
 } from 'lucide-react';
 import { cricketAudio } from '../utils/audio';
 import { calculateTeamAnalytics, calculateHeadToHead, FormBadge } from '../utils/teamAnalytics';
+
+// ---------- Head to Head poster (drawn on the phone, no extra Firebase reads) ----------
+const PF = 'Arial, Helvetica, sans-serif';
+
+const loadImg = (src?: string): Promise<HTMLImageElement | null> =>
+  new Promise((resolve) => {
+    if (!src) return resolve(null);
+    const img = new window.Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+
+const drawH2HPoster = async (teamA: Team, teamB: Team, h: any): Promise<string> => {
+  const W = 1080;
+  const H = 1350;
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const x = canvas.getContext('2d')!;
+  const [imgA, imgB] = await Promise.all([loadImg(teamA.logoUrl), loadImg(teamB.logoUrl)]);
+
+  const bg = x.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#030a2b');
+  bg.addColorStop(1, '#050b22');
+  x.fillStyle = bg;
+  x.fillRect(0, 0, W, H);
+  const glow = (cx: number, cy: number, col: string) => {
+    const r = x.createRadialGradient(cx, cy, 0, cx, cy, 420);
+    r.addColorStop(0, col);
+    r.addColorStop(1, 'transparent');
+    x.fillStyle = r;
+    x.fillRect(0, 0, W, H);
+  };
+  glow(150, 380, 'rgba(37,99,235,.5)');
+  glow(920, 380, 'rgba(249,115,22,.45)');
+  x.fillStyle = '#fbbf24';
+  x.fillRect(0, 0, W, 10);
+
+  const text = (s: string, px: number, py: number, f: string, col: string, al: CanvasTextAlign = 'center') => {
+    x.font = f;
+    x.fillStyle = col;
+    x.textAlign = al;
+    x.fillText(s, px, py);
+  };
+  // shrink text until it fits the width
+  const fit = (s: string, px: number, py: number, maxW: number, size: number, col: string, al: CanvasTextAlign = 'center', pre = 'italic 900') => {
+    let sz = size;
+    x.font = `${pre} ${sz}px ${PF}`;
+    while (x.measureText(s).width > maxW && sz > 14) {
+      sz -= 2;
+      x.font = `${pre} ${sz}px ${PF}`;
+    }
+    x.fillStyle = col;
+    x.textAlign = al;
+    x.fillText(s, px, py);
+  };
+
+  text('ARCL AMRITSAR · ROOFTOP CRICKET LEAGUE', 540, 78, `700 22px ${PF}`, '#fbbf24');
+  text('HEAD TO HEAD', 540, 172, `italic 900 92px ${PF}`, '#fff');
+
+  const colA = '#34d399';
+  const colB = '#38bdf8';
+  const logo = (cx: number, cy: number, team: Team, img: HTMLImageElement | null, fallback: string) => {
+    x.save();
+    x.beginPath();
+    x.arc(cx, cy, 92, 0, Math.PI * 2);
+    x.closePath();
+    x.fillStyle = team.color || fallback;
+    x.fill();
+    x.clip();
+    if (img) {
+      const sc = Math.max(184 / img.width, 184 / img.height);
+      x.drawImage(img, cx - (img.width * sc) / 2, cy - (img.height * sc) / 2, img.width * sc, img.height * sc);
+    } else {
+      x.font = `84px ${PF}`;
+      x.textAlign = 'center';
+      x.fillStyle = '#fff';
+      x.fillText(team.logoIcon || '🏏', cx, cy + 30);
+    }
+    x.restore();
+    x.beginPath();
+    x.arc(cx, cy, 92, 0, Math.PI * 2);
+    x.lineWidth = 6;
+    x.strokeStyle = 'rgba(255,255,255,.35)';
+    x.stroke();
+  };
+  logo(250, 380, teamA, imgA, '#10b981');
+  logo(830, 380, teamB, imgB, '#3b82f6');
+  fit((teamA.name || '').toUpperCase(), 250, 520, 440, 36, '#fff');
+  fit((teamB.name || '').toUpperCase(), 830, 520, 440, 36, '#fff');
+  text('VS', 540, 400, `italic 900 64px ${PF}`, '#fbbf24');
+  text(`${h.totalMatches} MATCH${h.totalMatches === 1 ? '' : 'ES'}`, 540, 445, `800 22px ${PF}`, '#fde68a');
+  if (h.ties > 0) text(`${h.ties} TIED`, 540, 475, `800 18px ${PF}`, '#fbbf24');
+  text(String(h.teamAWins), 250, 640, `italic 900 130px ${PF}`, colA);
+  text(String(h.teamBWins), 830, 640, `italic 900 130px ${PF}`, colB);
+  text(h.teamAWins === 1 ? 'WIN' : 'WINS', 250, 682, `800 24px ${PF}`, '#a7f3d0');
+  text(h.teamBWins === 1 ? 'WIN' : 'WINS', 830, 682, `800 24px ${PF}`, '#bae6fd');
+
+  const decided = Math.max(1, h.teamAWins + h.teamBWins);
+  x.fillStyle = '#1e293b';
+  x.fillRect(100, 720, 880, 22);
+  x.fillStyle = '#10b981';
+  x.fillRect(100, 720, (880 * h.teamAWins) / decided, 22);
+  x.fillStyle = '#38bdf8';
+  x.fillRect(100 + (880 * h.teamAWins) / decided, 720, (880 * h.teamBWins) / decided, 22);
+
+  const rows: [string, string, string][] = [
+    ['BAT FIRST WINS', String(h.teamABatFirstWins), String(h.teamBBatFirstWins)],
+    ['CHASE WINS', String(h.teamAChaseWins), String(h.teamBChaseWins)],
+    ['HIGHEST SCORE', String(h.teamAHighestScore || '-'), String(h.teamBHighestScore || '-')],
+  ];
+  rows.forEach((r, i) => {
+    const y = 790 + i * 78;
+    x.fillStyle = 'rgba(255,255,255,.07)';
+    x.beginPath();
+    x.roundRect(80, y, 920, 64, 18);
+    x.fill();
+    x.strokeStyle = 'rgba(251,191,36,.45)';
+    x.lineWidth = 2;
+    x.stroke();
+    text(r[1], 220, y + 44, `italic 900 40px ${PF}`, colA);
+    text(r[0], 540, y + 40, `800 22px ${PF}`, '#fde68a');
+    text(r[2], 860, y + 44, `italic 900 40px ${PF}`, colB);
+  });
+
+  const last3 = [...(h.matches || [])]
+    .sort((a: any, b: any) => (Number(b.updatedAt) || 0) - (Number(a.updatedAt) || 0))
+    .slice(0, 3);
+  if (last3.length > 0) {
+    text(`LAST ${last3.length} MEETING${last3.length === 1 ? '' : 'S'}`, 100, 1070, `800 22px ${PF}`, '#fde68a', 'left');
+    last3.forEach((m: any, i: number) => {
+      const y = 1090 + i * 58;
+      x.fillStyle = 'rgba(11,26,77,.95)';
+      x.fillRect(70, y, 940, 50);
+      x.strokeStyle = 'rgba(251,191,36,.45)';
+      x.lineWidth = 2;
+      x.strokeRect(70, y, 940, 50);
+      const r = m.result || {};
+      const winId = r.winnerTeamId;
+      const winTeam = winId === teamA.id ? teamA : winId === teamB.id ? teamB : null;
+      let line = 'Match tied';
+      if (winTeam) {
+        const by =
+          typeof r.marginRuns === 'number' && r.marginRuns > 0
+            ? `${r.marginRuns} run${r.marginRuns === 1 ? '' : 's'}`
+            : typeof r.marginWickets === 'number' && r.marginWickets > 0
+            ? `${r.marginWickets} wicket${r.marginWickets === 1 ? '' : 's'}`
+            : '';
+        line = `${winTeam.name} won${by ? ' by ' + by : ''}`;
+      } else if (!r.isTie) {
+        line = 'No result';
+      }
+      fit(line, 100, y + 33, 640, 24, '#fff', 'left', '800');
+      if (winTeam) fit(winTeam.name.toUpperCase(), 985, y + 34, 260, 24, winTeam.id === teamA.id ? colA : colB, 'right');
+    });
+  }
+  text(`Based on ${h.totalMatches} completed match${h.totalMatches === 1 ? '' : 'es'}`, 540, 1296, `700 20px ${PF}`, 'rgba(255,255,255,.55)');
+  x.fillStyle = '#fbbf24';
+  x.fillRect(0, H - 10, W, 10);
+  return canvas.toDataURL('image/png');
+};
+
+const dataUrlToFile = (url: string, name: string): File => {
+  const bin = atob(url.split(',')[1]);
+  const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new File([arr], name, { type: 'image/png' });
+};
 
 interface TeamProfileModalProps {
   isOpen: boolean;
@@ -45,6 +216,8 @@ export const TeamProfileModal: React.FC<TeamProfileModalProps> = ({
   const [activeTab, setActiveTab] = useState<'overview' | 'last20' | 'h2h' | 'squad'>('overview');
   const [copiedId, setCopiedId] = useState(false);
   const [selectedOpponentId, setSelectedOpponentId] = useState<string>('');
+  const [h2hPoster, setH2hPoster] = useState<string>('');
+  const [h2hBusy, setH2hBusy] = useState(false);
 
   // Analytics for the selected team
   const analytics = useMemo(() => {
@@ -75,6 +248,43 @@ export const TeamProfileModal: React.FC<TeamProfileModalProps> = ({
   }, [team, selectedOpponent, allMatches]);
 
   if (!isOpen || !team || !analytics) return null;
+
+  const openH2hPoster = async () => {
+    if (!selectedOpponent || !h2hStats) return;
+    cricketAudio.playClick();
+    setH2hBusy(true);
+    try {
+      setH2hPoster(await drawH2HPoster(team, selectedOpponent, h2hStats));
+    } catch (e) {
+      alert('Could not make the poster. Please try again.');
+    }
+    setH2hBusy(false);
+  };
+  const h2hFileName = () =>
+    `ARCL_H2H_${(team.name || 'A').replace(/[^a-z0-9]+/gi, '_')}_vs_${(selectedOpponent?.name || 'B').replace(/[^a-z0-9]+/gi, '_')}.png`;
+  const shareH2h = async () => {
+    if (!h2hPoster) return;
+    const file = dataUrlToFile(h2hPoster, h2hFileName());
+    try {
+      const nav: any = navigator;
+      if (nav.canShare && nav.canShare({ files: [file] })) {
+        await nav.share({ files: [file], title: `${team.name} vs ${selectedOpponent?.name}` });
+        return;
+      }
+    } catch (e) {
+      return; // person closed the share sheet
+    }
+    saveH2h();
+  };
+  const saveH2h = () => {
+    if (!h2hPoster) return;
+    const a = document.createElement('a');
+    a.href = h2hPoster;
+    a.download = h2hFileName();
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
 
   const teamCode = team.teamId || team.profileId || 'TEAM-001';
 
@@ -500,6 +710,16 @@ export const TeamProfileModal: React.FC<TeamProfileModalProps> = ({
 
               {selectedOpponent && h2hStats ? (
                 <div className="space-y-6">
+                  {h2hStats.totalMatches > 0 && (
+                    <button
+                      onClick={openH2hPoster}
+                      disabled={h2hBusy}
+                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-orange-500 hover:opacity-90 disabled:opacity-60 text-white text-xs font-black cursor-pointer flex items-center justify-center gap-2 shadow-lg"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>{h2hBusy ? 'Making poster…' : 'Share Head to Head Poster'}</span>
+                    </button>
+                  )}
                   {/* H2H Faceoff Banner */}
                   <div className="p-6 rounded-3xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-cyan-500/30 text-center space-y-4 shadow-xl">
                     <div className="flex items-center justify-center gap-6 sm:gap-12">
@@ -768,6 +988,34 @@ export const TeamProfileModal: React.FC<TeamProfileModalProps> = ({
           )}
         </div>
       </div>
+
+      {h2hPoster && (
+        <div className="fixed inset-0 z-[60] bg-black/90 flex flex-col items-center justify-center p-4 gap-3">
+          <img src={h2hPoster} alt="Head to Head poster" className="max-h-[70vh] max-w-full rounded-2xl border border-slate-700" />
+          <div className="flex gap-2 w-full max-w-sm">
+            <button
+              onClick={shareH2h}
+              className="flex-1 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-black cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Share2 className="w-4 h-4" />
+              <span>Share</span>
+            </button>
+            <button
+              onClick={saveH2h}
+              className="flex-1 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-white text-sm font-black cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>Save</span>
+            </button>
+          </div>
+          <button
+            onClick={() => setH2hPoster('')}
+            className="w-full max-w-sm py-3 rounded-2xl bg-slate-900 border border-slate-800 text-sky-300 text-sm font-black cursor-pointer"
+          >
+            ← Back
+          </button>
+        </div>
+      )}
     </div>
   );
 };
